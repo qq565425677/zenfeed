@@ -2,6 +2,13 @@
 
 ---
 # 合作伙伴
+
+<a href="http://compshare.cn/?ytag=GPU_YY_JL_git_zenfeed">
+  <img src="docs/images/ucloud.png" alt="感谢优云智算赞助本项目" width="420">
+</a>
+
+感谢优云智算赞助了本项目！优云智算是 UCloud 旗下 AI 云平台，提供稳定、全面的国内外模型 API，仅一个 key 即可调用。主打包月、按量的高性价比 Coding Plan 套餐，基于官方 2~5 折优惠。支持接入 Claude Code、Codex 及 API 调用。支持企业高并发、7*24 技术支持、自助开票。通过[此链接](http://compshare.cn/?ytag=GPU_YY_JL_git_zenfeed)注册的用户，可得免费 5 元平台体验金！
+
 [![image](docs/images/302.jpg)](https://share.302.ai/mFS9MS)
 
 [302.AI](https://share.302.ai/mFS9MS)是一个按需付费的AI应用平台，提供市面上最全的AI API和AI在线应用。 
@@ -276,4 +283,3 @@ $env:API_KEY = "sk-..."; docker-compose -p zenfeed up -d
 **请再次注意：使用本软件抓取、处理和分发受版权保护的内容可能存在法律风险。用户有责任确保其使用行为符合所有适用的法律法规和第三方服务条款。对于任何因用户滥用或不当使用本软件而引起的法律纠纷或损失，项目作者和贡献者不承担任何责任。**
 
 </details>
-
