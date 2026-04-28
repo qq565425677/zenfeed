@@ -128,10 +128,11 @@ type ObjectStorage struct {
 }
 
 type ScrapeSource struct {
-	Interval timeutil.Duration `yaml:"interval,omitempty" json:"interval,omitempty" desc:"How often to scrape this source. Default: global interval"`
-	Name     string            `yaml:"name,omitempty" json:"name,omitempty" desc:"The name of the source. It is required."`
-	Labels   map[string]string `yaml:"labels,omitempty" json:"labels,omitempty" desc:"The additional labels to add to the feed of this source."`
-	RSS      *ScrapeSourceRSS  `yaml:"rss,omitempty" json:"rss,omitempty" desc:"The RSS config of the source."`
+	Interval          timeutil.Duration `yaml:"interval,omitempty" json:"interval,omitempty" desc:"How often to scrape this source. Default: global interval"`
+	MaxItemsPerScrape int               `yaml:"max_items_per_scrape,omitempty" json:"max_items_per_scrape,omitempty" desc:"Optional maximum number of new feeds to process from this source on each scrape. Useful for development/testing. 0 means no limit."`
+	Name              string            `yaml:"name,omitempty" json:"name,omitempty" desc:"The name of the source. It is required."`
+	Labels            map[string]string `yaml:"labels,omitempty" json:"labels,omitempty" desc:"The additional labels to add to the feed of this source."`
+	RSS               *ScrapeSourceRSS  `yaml:"rss,omitempty" json:"rss,omitempty" desc:"The RSS config of the source."`
 }
 
 type ScrapeSourceRSS struct {
@@ -384,6 +385,17 @@ func (m *manager) Subscribe(w Watcher) {
 	m.subscribers = append(m.subscribers, w)
 }
 
+func parseAppConfig(b []byte) (*App, error) {
+	expanded := os.ExpandEnv(string(b))
+
+	var app App
+	if err := yaml.Unmarshal([]byte(expanded), &app); err != nil {
+		return nil, errors.Wrap(err, "parse config file")
+	}
+
+	return &app, nil
+}
+
 func (m *manager) tryReloadAppConfig(ctx context.Context) (err error) {
 	ctx = telemetry.StartWith(ctx, append(m.TelemetryLabels(), telemetrymodel.KeyOperation, "tryReloadAppConfig")...)
 	defer func() { telemetry.End(ctx, err) }()
@@ -395,13 +407,13 @@ func (m *manager) tryReloadAppConfig(ctx context.Context) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "read config file")
 	}
-	var newConfig App
-	if err := yaml.Unmarshal(b, &newConfig); err != nil {
-		return errors.Wrap(err, "parse config file")
+	newConfig, err := parseAppConfig(b)
+	if err != nil {
+		return err
 	}
 
 	// Diff the new config with the old one.
-	if reflect.DeepEqual(m.app, &newConfig) {
+	if reflect.DeepEqual(m.app, newConfig) {
 		log.Debug(ctx, "config is the same, skipping reload")
 
 		return nil
@@ -410,13 +422,13 @@ func (m *manager) tryReloadAppConfig(ctx context.Context) (err error) {
 	// Notify the subscribers.
 	for _, s := range m.subscribers {
 		log.Debug(ctx, "notifying subscriber", "subscriber", s.Name())
-		if err := s.Reload(&newConfig); err != nil {
+		if err := s.Reload(newConfig); err != nil {
 			return errors.Wrap(err, "notify subscribers")
 		}
 	}
 
 	// Update the config.
-	m.app = &newConfig
+	m.app = newConfig
 
 	return nil
 }

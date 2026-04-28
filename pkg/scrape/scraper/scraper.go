@@ -46,11 +46,12 @@ type Scraper interface {
 }
 
 type Config struct {
-	Past     time.Duration
-	Interval time.Duration
-	Name     string
-	Labels   model.Labels
-	RSS      *ScrapeSourceRSS
+	Past              time.Duration
+	Interval          time.Duration
+	MaxItemsPerScrape int
+	Name              string
+	Labels            model.Labels
+	RSS               *ScrapeSourceRSS
 }
 
 const maxPast = 15 * 24 * time.Hour
@@ -67,6 +68,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Interval < 10*time.Minute {
 		c.Interval = 10 * time.Minute
+	}
+	if c.MaxItemsPerScrape < 0 {
+		return errors.New("max items per scrape cannot be negative")
 	}
 	if c.Name == "" {
 		return errors.New("name cannot be empty")
@@ -201,6 +205,7 @@ func (s *scraper) processFeeds(ctx context.Context, feeds []*model.Feed) []*mode
 	feeds = s.addAdditionalMetaLabels(feeds)
 	feeds = s.fillIDs(feeds)
 	feeds = s.filterExists(ctx, feeds)
+	feeds = s.limitFeeds(feeds)
 	feeds = s.addPodcastSource(ctx, feeds)
 
 	return feeds
@@ -290,6 +295,15 @@ func (s *scraper) addAdditionalMetaLabels(feeds []*model.Feed) []*model.Feed {
 	}
 
 	return feeds
+}
+
+func (s *scraper) limitFeeds(feeds []*model.Feed) []*model.Feed {
+	limit := s.Config().MaxItemsPerScrape
+	if limit <= 0 || len(feeds) <= limit {
+		return feeds
+	}
+
+	return feeds[:limit]
 }
 
 func (s *scraper) addPodcastSource(ctx context.Context, feeds []*model.Feed) []*model.Feed {

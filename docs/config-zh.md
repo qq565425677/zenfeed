@@ -72,6 +72,7 @@
 | 字段                        | 类型                | 描述                                                                                 | 默认值          | 是否必需              |
 | :-------------------------- | :------------------ | :----------------------------------------------------------------------------------- | :-------------- | :-------------------- |
 | `scrape.sources[].interval` | `time.Duration`     | 抓取此特定源的频率。覆盖全局 `scrape.interval`。                                     | 全局 `interval` | 否                    |
+| `scrape.sources[].max_items_per_scrape` | `int` | 可选。限制此源每次抓取最多处理多少条新 Feed。适合开发/测试。`0` 表示不限制。 | `0` | 否 |
 | `scrape.sources[].name`     | `string`            | 源的名称。用于标记 Feed。                                                            |                 | 是                    |
 | `scrape.sources[].labels`   | `map[string]string` | 附加到此源 Feed 的额外键值标签。                                                     | `{}`            | 否                    |
 | `scrape.sources[].rss`      | `object`            | 此源的 RSS 配置。详见下方的 **抓取源 RSS 配置**。每个源只能设置一种类型 (例如 RSS)。 | `nil`           | 是 (如果源类型是 RSS) |

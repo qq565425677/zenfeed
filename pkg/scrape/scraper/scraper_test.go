@@ -131,6 +131,20 @@ func TestConfig_Validate(t *testing.T) {
 				wantErrMsg: "name cannot be empty",
 			},
 		},
+		{
+			Scenario: "Negative MaxItemsPerScrape",
+			Given:    "a config with a negative max items per scrape",
+			When:     "validating the config",
+			Then:     "should return an error",
+			GivenDetail: givenDetail{
+				config: &Config{Name: "test", MaxItemsPerScrape: -1},
+			},
+			WhenDetail: whenDetail{},
+			ThenExpected: thenExpected{
+				isErr:      true,
+				wantErrMsg: "max items per scrape cannot be negative",
+			},
+		},
 	}
 
 	// --- Run tests ---
