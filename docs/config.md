@@ -143,7 +143,8 @@ This configuration defines how to transform the text from `source_label` into a 
 | :------------------------------------------- | :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------- | :------- |
 | `...to_podcast.llm`                          | `string`          | The name of the LLM (from the `llms` section) to use for generating the podcast script.                                                        | Default LLM in `llms` section | No       |
 | `...to_podcast.transcript_additional_prompt` | `string`          | Additional instructions to append to the prompt for generating the podcast script.                                                             |                               | No       |
-| `...to_podcast.tts_llm`                      | `string`          | The name of the LLM (from the `llms` section) to use for Text-to-Speech (TTS). **Note: Currently only supports LLMs with `provider: gemini`**. | Default LLM in `llms` section | No       |
+| `...to_podcast.tts_provider`                 | `string`          | TTS provider. Supported values: `gemini`, `edge`.                                                                                              | `gemini`                      | No       |
+| `...to_podcast.tts_llm`                      | `string`          | The name of the LLM (from the `llms` section) to use for Text-to-Speech (TTS), when `tts_provider` is `gemini`.                              | Default LLM in `llms` section | No       |
 | `...to_podcast.speakers`                     | `list of objects` | A list of speakers for the podcast. See **Speaker Configuration** below.                                                                       | `[]`                          | Yes      |
 
 #### Speaker Configuration (`...to_podcast.speakers[]`)

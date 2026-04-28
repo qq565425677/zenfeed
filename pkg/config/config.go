@@ -162,7 +162,8 @@ type RewriteRuleTransformToPodcast struct {
 	LLM                        string                                 `yaml:"llm,omitempty" json:"llm,omitempty" desc:"The LLM name to use. Default is the default LLM in llms section."`
 	EstimateMaximumDuration    timeutil.Duration                      `yaml:"estimate_maximum_duration,omitempty" json:"estimate_maximum_duration,omitempty" desc:"The estimated maximum duration of the podcast. It will affect the length of the generated transcript. e.g. 5m. Default is 5m."`
 	TranscriptAdditionalPrompt string                                 `yaml:"transcript_additional_prompt,omitempty" json:"transcript_additional_prompt,omitempty" desc:"The additional prompt to add to the transcript. It is optional."`
-	TTSLLM                     string                                 `yaml:"tts_llm,omitempty" json:"tts_llm,omitempty" desc:"The LLM name to use for TTS. Only supports gemini now. Default is the default LLM in llms section."`
+	TTSProvider                string                                 `yaml:"tts_provider,omitempty" json:"tts_provider,omitempty" desc:"The provider to use for TTS. Supported values: gemini, edge. Default is gemini."`
+	TTSLLM                     string                                 `yaml:"tts_llm,omitempty" json:"tts_llm,omitempty" desc:"The LLM name to use for TTS when tts_provider is gemini. Default is the default LLM in llms section."`
 	Speakers                   []RewriteRuleTransformToPodcastSpeaker `yaml:"speakers,omitempty" json:"speakers,omitempty" desc:"The speakers to use. It is required, at least one speaker is needed."`
 }
 

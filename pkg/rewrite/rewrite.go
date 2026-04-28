@@ -161,6 +161,17 @@ func (r *Rule) Validate() error { //nolint:cyclop,gocognit,funlen
 		}
 
 		if r.Transform.ToPodcast != nil {
+			if r.Transform.ToPodcast.TTSProvider == "" {
+				r.Transform.ToPodcast.TTSProvider = TTSProviderGemini
+			} else {
+				r.Transform.ToPodcast.TTSProvider = TTSProvider(strings.ToLower(string(r.Transform.ToPodcast.TTSProvider)))
+			}
+			switch r.Transform.ToPodcast.TTSProvider {
+			case TTSProviderGemini, TTSProviderEdge:
+			default:
+				return errors.Errorf("invalid tts provider: %s", r.Transform.ToPodcast.TTSProvider)
+			}
+
 			if len(r.Transform.ToPodcast.Speakers) == 0 {
 				return errors.New("at least one speaker is required for to_podcast")
 			}
@@ -271,7 +282,11 @@ func (r *Rule) From(c *config.RewriteRule) {
 				LLM:                        c.Transform.ToPodcast.LLM,
 				EstimateMaximumDuration:    time.Duration(c.Transform.ToPodcast.EstimateMaximumDuration),
 				TranscriptAdditionalPrompt: c.Transform.ToPodcast.TranscriptAdditionalPrompt,
+				TTSProvider:                TTSProvider(c.Transform.ToPodcast.TTSProvider),
 				TTSLLM:                     c.Transform.ToPodcast.TTSLLM,
+			}
+			if toPodcast.TTSProvider == "" {
+				toPodcast.TTSProvider = TTSProviderGemini
 			}
 			if toPodcast.EstimateMaximumDuration == 0 {
 				toPodcast.EstimateMaximumDuration = 3 * time.Minute
@@ -318,6 +333,7 @@ type ToPodcast struct {
 	LLM                        string
 	EstimateMaximumDuration    time.Duration
 	TranscriptAdditionalPrompt string
+	TTSProvider                TTSProvider
 	TTSLLM                     string
 	Speakers                   []Speaker
 
@@ -331,6 +347,13 @@ type Speaker struct {
 	Role  string
 	Voice string
 }
+
+type TTSProvider string
+
+const (
+	TTSProviderGemini TTSProvider = "gemini"
+	TTSProviderEdge   TTSProvider = "edge"
+)
 
 type ToTextType string
 
@@ -519,13 +542,23 @@ var audioKey = func(transcript, ext string) string {
 	return "podcasts/" + file
 }
 
+func (t *ToPodcast) audioFormat() (ext, contentType string) {
+	switch t.TTSProvider {
+	case TTSProviderEdge:
+		return "mp3", "audio/mpeg"
+	default:
+		return "wav", "audio/wav"
+	}
+}
+
 func (r *rewriter) transformPodcast(ctx context.Context, toPodcast *ToPodcast, sourceText string) (url string, err error) {
 	transcript, err := r.generateTranscript(ctx, toPodcast, sourceText)
 	if err != nil {
 		return "", errors.Wrap(err, "generate podcast transcript")
 	}
 
-	audioKey := audioKey(transcript, "wav")
+	audioExt, contentType := toPodcast.audioFormat()
+	audioKey := audioKey(string(toPodcast.TTSProvider)+"\n"+transcript, audioExt)
 	url, err = r.Dependencies().ObjectStorage.Get(ctx, audioKey)
 	switch {
 	case err == nil:
@@ -547,7 +580,7 @@ func (r *rewriter) transformPodcast(ctx context.Context, toPodcast *ToPodcast, s
 		}
 	}()
 
-	url, err = r.Dependencies().ObjectStorage.Put(ctx, audioKey, audioStream, "audio/wav")
+	url, err = r.Dependencies().ObjectStorage.Put(ctx, audioKey, audioStream, contentType)
 	if err != nil {
 		return "", errors.Wrap(err, "store podcast audio")
 	}
@@ -568,13 +601,26 @@ func (r *rewriter) generateTranscript(ctx context.Context, toPodcast *ToPodcast,
 }
 
 func (r *rewriter) generateAudio(ctx context.Context, toPodcast *ToPodcast, transcript string) (io.ReadCloser, error) {
-	audioStream, err := r.Dependencies().LLMFactory.Get(toPodcast.TTSLLM).
-		WAV(ctx, transcript, toPodcast.speakers)
-	if err != nil {
-		return nil, errors.Wrap(err, "calling tts llm")
-	}
+	switch toPodcast.TTSProvider {
+	case TTSProviderEdge:
+		audioStream, err := edgeTTSMP3(ctx, transcript, toPodcast.Speakers)
+		if err != nil {
+			return nil, errors.Wrap(err, "calling edge tts")
+		}
 
-	return audioStream, nil
+		return audioStream, nil
+
+	case TTSProviderGemini:
+		fallthrough
+	default:
+		audioStream, err := r.Dependencies().LLMFactory.Get(toPodcast.TTSLLM).
+			WAV(ctx, transcript, toPodcast.speakers)
+		if err != nil {
+			return nil, errors.Wrap(err, "calling tts llm")
+		}
+
+		return audioStream, nil
+	}
 }
 
 type mockRewriter struct {

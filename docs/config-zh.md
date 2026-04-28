@@ -143,7 +143,8 @@
 | :------------------------------------------- | :--------- | :-------------------------------------------------------------------------------------------------------- | :---------------------- | :------- |
 | `...to_podcast.llm`                          | `string`   | 用于生成播客稿件的 LLM 名称 (来自 `llms` 部分)。                                                          | `llms` 部分中的默认 LLM | 否       |
 | `...to_podcast.transcript_additional_prompt` | `string`   | 附加到播客稿件生成 Prompt 的额外指令。                                                                    |                         | 否       |
-| `...to_podcast.tts_llm`                      | `string`   | 用于文本转语音 (TTS) 的 LLM 名称 (来自 `llms` 部分)。**注意：目前仅支持 `provider` 为 `gemini` 的 LLM**。 | `llms` 部分中的默认 LLM | 否       |
+| `...to_podcast.tts_provider`                 | `string`   | TTS 提供商。支持值：`gemini`、`edge`。                                                                  | `gemini`                | 否       |
+| `...to_podcast.tts_llm`                      | `string`   | 当 `tts_provider` 为 `gemini` 时，用于文本转语音 (TTS) 的 LLM 名称 (来自 `llms` 部分)。                 | `llms` 部分中的默认 LLM | 否       |
 | `...to_podcast.speakers`                     | `对象列表` | 播客的演讲者列表。详见下方的 **演讲者配置**。                                                             | `[]`                    | 是       |
 
 #### 演讲者配置 (`...to_podcast.speakers[]`)

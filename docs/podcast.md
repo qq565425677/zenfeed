@@ -6,7 +6,7 @@ Zenfeed 的播客功能可以将任何文章源自动转换为一场引人入胜
 
 1.  **提取内容**: Zenfeed 首先通过重写规则提取文章的全文内容。
 2.  **生成脚本**: 使用一个指定的 LLM（如 GPT-4o-mini）将文章内容改编成一个由多位虚拟主播对话的脚本。您可以定义每个主播的角色（人设）来控制对话风格。
-3.  **语音合成**: 调用另一个支持 TTS 的 LLM（目前仅支持 Google Gemini）将脚本中的每一句对话转换为语音。
+3.  **语音合成**: 根据 `tts_provider` 调用对应 TTS 后端（`gemini` 或 `edge`）将脚本转换为语音。
 4.  **音频合并**: 将所有语音片段合成为一个完整的 WAV 音频文件。
 5.  **上传存储**: 将生成的播客文件上传到您配置的 S3 兼容对象存储中。
 6.  **保存链接**: 最后，将播客文件的公开访问 URL 保存为一个新的 Feed 标签，方便您在通知、API 或其他地方使用。
@@ -17,10 +17,11 @@ Zenfeed 的播客功能可以将任何文章源自动转换为一场引人入胜
 
 ### 1. 配置 LLM
 
-您需要至少配置两个 LLM：一个用于生成对话脚本，另一个用于文本转语音（TTS）。
+您至少需要配置一个用于生成对话脚本的 LLM；如果选择 `tts_provider: gemini`，还需要额外配置一个用于 TTS 的 Gemini LLM。
 
 -   **脚本生成 LLM**: 可以是任何性能较好的聊天模型，例如 OpenAI 的 `gpt-4o-mini` 或 Google 的 `gemini-1.5-pro`。
--   **TTS LLM**: 用于将文本转换为语音。**注意：目前此功能仅支持 `provider` 为 `gemini` 的 LLM。**
+-   **TTS (`gemini`)**: 使用 Gemini TTS 时，需要配置一个 `provider: gemini` 的 LLM，并在规则中设置 `tts_provider: gemini` 和 `tts_llm`。
+-   **TTS (`edge`)**: 使用 Edge 免费 TTS 时，在规则中设置 `tts_provider: edge` 即可，不依赖 `tts_llm`。
 
 **示例 `config.yaml`:**
 
@@ -73,11 +74,12 @@ storage:
 -   `label`: 用于存储最终播客 URL 的新标签名称。
 -   `transform.to_podcast`: 播客转换的核心配置。
     -   `llm`: 用于生成脚本的 LLM 名称（来自 `llms` 配置）。
-    -   `tts_llm`: 用于 TTS 的 LLM 名称（来自 `llms` 配置）。
+    -   `tts_provider`: TTS 提供商，支持 `gemini` 或 `edge`。
+    -   `tts_llm`: 用于 TTS 的 LLM 名称（来自 `llms` 配置，仅 `tts_provider: gemini` 时需要）。
     -   `speakers`: 定义播客的演讲者。
         -   `name`: 演讲者的名字。
         -   `role`: 演讲者的角色和人设，将影响脚本内容。
-        -   `voice`: 演讲者的声音。请参考 [Gemini TTS 文档](https://ai.google.dev/gemini-api/docs/speech-generation#voices)。
+        -   `voice`: 演讲者的声音。`tts_provider: gemini` 时请参考 [Gemini TTS 文档](https://ai.google.dev/gemini-api/docs/speech-generation#voices)；`tts_provider: edge` 时使用 Edge 语音名（如 `zh-CN-XiaoxiaoNeural`）。
 
 **示例 `config.yaml`:**
 
@@ -91,7 +93,8 @@ storage:
             estimate_maximum_duration: 3m0s # 接近 3 分钟
             transcript_additional_prompt: 对话引人入胜，流畅自然，拒绝 AI 味，使用中文回复 # 脚本内容要求
             llm: xxxx # 负责生成脚本的 llm
-            tts_llm: gemini-tts # 仅支持 gemini tts，推荐使用 https://github.com/glidea/one-balance 轮询
+            tts_provider: gemini # 或 edge
+            tts_llm: gemini-tts # 仅当 tts_provider=gemini 时需要
             speakers:
               - name: 小雅
                 role: >-

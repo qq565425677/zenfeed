@@ -436,3 +436,25 @@ func TestLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestRuleValidate_InvalidTTSProvider(t *testing.T) {
+	rule := Rule{
+		SourceLabel: model.LabelContent,
+		Transform: &Transform{
+			ToPodcast: &ToPodcast{
+				TTSProvider: "invalid-provider",
+				Speakers:    []Speaker{{Name: "narrator", Voice: "alloy"}},
+			},
+		},
+		Action: ActionCreateOrUpdateLabel,
+		Label:  "podcast_url",
+	}
+
+	err := rule.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid tts provider, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid tts provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
