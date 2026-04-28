@@ -1,0 +1,7 @@
+.env
+*.env
+.env.*
+config.yaml
+data
+bin
+.git
