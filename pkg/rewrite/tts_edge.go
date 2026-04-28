@@ -3,32 +3,34 @@ package rewrite
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"io"
-	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"golang.org/x/net/websocket"
-
+	"github.com/difyz9/edge-tts-go/pkg/communicate"
 	"github.com/pkg/errors"
 )
 
 const dialogueScriptMarker = "Followed by the actual dialogue script:"
 
 const (
-	edgeTTSWSSURL       = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4"
-	edgeTTSOutputFormat = "audio-24khz-48kbitrate-mono-mp3"
-	edgeTTSOrigin       = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
+	edgeTTSRate                  = "+0%"
+	edgeTTSVolume                = "+0%"
+	edgeTTSPitch                 = "+0Hz"
+	edgeTTSConnectTimeoutSeconds = 10
+	edgeTTSReceiveTimeoutSeconds = 60
+	edgeTTSRetryAttempts         = 3
+	edgeTTSRetryDelay            = 500 * time.Millisecond
+	edgeTTSErrorSnippetRunes     = 120
 )
 
 type edgeTTSSegment struct {
 	voice string
 	text  string
 }
+
+var newEdgeTTSCommunicate = communicate.NewCommunicate
 
 func edgeTTSMP3(ctx context.Context, transcript string, speakers []Speaker) (io.ReadCloser, error) {
 	segments, err := buildEdgeTTSSegments(transcript, speakers)
@@ -144,81 +146,77 @@ func appendOrMergeSegment(segments []edgeTTSSegment, segment edgeTTSSegment) []e
 }
 
 func edgeTTSSingle(ctx context.Context, text, voice string) ([]byte, error) {
-	requestID, err := randomHex(16)
-	if err != nil {
-		return nil, errors.Wrap(err, "generate request id")
-	}
-	url := edgeTTSWSSURL + "&ConnectionId=" + requestID
-	cfg, err := websocket.NewConfig(url, "https://edge.microsoft.com/")
-	if err != nil {
-		return nil, errors.Wrap(err, "create websocket config")
-	}
-	cfg.Header = http.Header{
-		"Pragma":          []string{"no-cache"},
-		"Cache-Control":   []string{"no-cache"},
-		"Origin":          []string{edgeTTSOrigin},
-		"Accept-Language": []string{"en-US,en;q=0.9"},
-	}
-	ws, err := websocket.DialConfig(cfg)
-	if err != nil {
-		return nil, errors.Wrap(err, "connect edge tts websocket")
-	}
-	defer func() { _ = ws.Close() }()
-
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
+	var lastErr error
+	for attempt := 1; attempt <= edgeTTSRetryAttempts; attempt++ {
+		audio, err := edgeTTSSingleAttempt(ctx, text, voice)
+		if err == nil {
+			return audio, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			break
+		}
+		if attempt == edgeTTSRetryAttempts {
+			break
+		}
 		select {
 		case <-ctx.Done():
-			_ = ws.Close()
-		case <-done:
+			return nil, errors.Wrap(ctx.Err(), "edge tts context done")
+		case <-time.After(edgeTTSRetryDelay):
 		}
-	}()
-
-	timestamp := edgeTTSTimestamp()
-	speechConfig := buildEdgeSpeechConfigMessage(timestamp)
-	if err := websocket.Message.Send(ws, speechConfig); err != nil {
-		return nil, errors.Wrap(err, "send edge speech config")
-	}
-	ssmlMessage := buildEdgeSSMLMessage(requestID, timestamp, text, voice)
-	if err := websocket.Message.Send(ws, ssmlMessage); err != nil {
-		return nil, errors.Wrap(err, "send edge ssml")
 	}
 
+	return nil, errors.Wrapf(lastErr, "voice=%s text=%q", voice, edgeTTSErrorSnippet(text))
+}
+
+func edgeTTSSingleAttempt(ctx context.Context, text, voice string) ([]byte, error) {
+	comm, err := newEdgeTTSCommunicate(
+		text,
+		voice,
+		edgeTTSRate,
+		edgeTTSVolume,
+		edgeTTSPitch,
+		"",
+		edgeTTSConnectTimeoutSeconds,
+		edgeTTSReceiveTimeoutSeconds,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "create edge-tts-go communicator")
+	}
+
+	chunkChan, errChan := comm.Stream(ctx)
 	audio := bytes.NewBuffer(nil)
-	for {
-		var frame []byte
-		if err := websocket.Message.Receive(ws, &frame); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			return nil, errors.Wrap(err, "receive edge tts frame")
+	for chunk := range chunkChan {
+		if chunk.Type != "audio" {
+			continue
 		}
-		path, payload, err := parseEdgeFrame(frame)
-		if err != nil {
-			return nil, errors.Wrap(err, "parse edge tts frame")
-		}
-		switch path {
-		case "audio":
-			if _, err := audio.Write(payload); err != nil {
-				return nil, errors.Wrap(err, "write edge tts chunk")
-			}
-		case "turn.end":
-			goto doneReceive
-		case "response":
-			if bytes.Contains(frame, []byte("X-Error")) {
-				return nil, errors.Errorf("edge tts response error: %s", strings.TrimSpace(string(frame)))
-			}
+		if _, err := audio.Write(chunk.Data); err != nil {
+			return nil, errors.Wrap(err, "write edge tts chunk")
 		}
 	}
-doneReceive:
 
+	if err := <-errChan; err != nil {
+		return nil, errors.Wrap(err, "stream edge tts audio")
+	}
 	if audio.Len() == 0 {
 		return nil, errors.New("no audio data returned by edge tts")
 	}
 
 	return audio.Bytes(), nil
+}
+
+func edgeTTSErrorSnippet(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+
+	runes := []rune(text)
+	if len(runes) <= edgeTTSErrorSnippetRunes {
+		return text
+	}
+
+	return string(runes[:edgeTTSErrorSnippetRunes]) + "..."
 }
 
 func stripLeadingID3Tag(data []byte) []byte {
@@ -233,72 +231,4 @@ func stripLeadingID3Tag(data []byte) []byte {
 	}
 
 	return data[offset:]
-}
-
-func randomHex(size int) (string, error) {
-	if size <= 0 {
-		return "", errors.New("size must be positive")
-	}
-	bs := make([]byte, size)
-	if _, err := rand.Read(bs); err != nil {
-		return "", errors.Wrap(err, "read random bytes")
-	}
-
-	return hex.EncodeToString(bs), nil
-}
-
-func edgeTTSTimestamp() string {
-	// Matches the timestamp style used by Edge read-aloud clients.
-	return time.Now().UTC().Format("Mon Jan 02 2006 15:04:05 GMT+0000 (Coordinated Universal Time)")
-}
-
-func buildEdgeSpeechConfigMessage(timestamp string) string {
-	return fmt.Sprintf("X-Timestamp:%s\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"%s\"}}}}", timestamp, edgeTTSOutputFormat)
-}
-
-func buildEdgeSSMLMessage(requestID, timestamp, text, voice string) string {
-	ssml := "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>" +
-		fmt.Sprintf("<voice name='%s'><prosody rate='+0%%' volume='+0%%'>", xmlEscape(voice)) +
-		xmlEscape(text) +
-		"</prosody></voice></speak>"
-
-	return fmt.Sprintf("X-RequestId:%s\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:%s\r\nPath:ssml\r\n\r\n%s", requestID, timestamp, ssml)
-}
-
-func parseEdgeFrame(frame []byte) (path string, payload []byte, err error) {
-	if len(frame) == 0 {
-		return "", nil, nil
-	}
-
-	sep := []byte("\r\n\r\n")
-	headerEnd := bytes.Index(frame, sep)
-	if headerEnd < 0 {
-		return "", frame, nil
-	}
-
-	header := string(frame[:headerEnd])
-	payload = frame[headerEnd+len(sep):]
-
-	switch {
-	case strings.Contains(header, "Path:audio\r\n"), strings.HasSuffix(header, "Path:audio"):
-		return "audio", payload, nil
-	case strings.Contains(header, "Path:turn.end\r\n"), strings.HasSuffix(header, "Path:turn.end"):
-		return "turn.end", payload, nil
-	case strings.Contains(header, "Path:response\r\n"), strings.HasSuffix(header, "Path:response"):
-		return "response", payload, nil
-	default:
-		return "", payload, nil
-	}
-}
-
-func xmlEscape(s string) string {
-	r := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		"\"", "&quot;",
-		"'", "&apos;",
-	)
-
-	return r.Replace(s)
 }

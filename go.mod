@@ -6,6 +6,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/benbjohnson/clock v1.3.5
 	github.com/chewxy/math32 v1.10.1
+	github.com/difyz9/edge-tts-go v0.0.3
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/gorilla/feeds v1.2.0
 	github.com/mark3labs/mcp-go v0.17.0
@@ -40,6 +41,7 @@ require (
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect

@@ -1,7 +1,11 @@
 package rewrite
 
 import (
+	"context"
+	"errors"
 	"testing"
+
+	"github.com/difyz9/edge-tts-go/pkg/communicate"
 )
 
 func TestBuildEdgeTTSSegments(t *testing.T) {
@@ -73,5 +77,41 @@ func TestStripLeadingID3Tag(t *testing.T) {
 	plain := []byte("NO-ID3")
 	if string(stripLeadingID3Tag(plain)) != "NO-ID3" {
 		t.Fatalf("plain bytes should not be modified")
+	}
+}
+
+func TestEdgeTTSSingleRetriesTransientFailure(t *testing.T) {
+	originalFactory := newEdgeTTSCommunicate
+	t.Cleanup(func() {
+		newEdgeTTSCommunicate = originalFactory
+	})
+
+	attempts := 0
+	newEdgeTTSCommunicate = func(string, string, string, string, string, string, int, int, ...string) (*communicate.Communicate, error) {
+		attempts++
+		return nil, errors.New("boom")
+	}
+
+	_, err := edgeTTSSingle(context.Background(), "hello", "zh-CN-XiaoxiaoNeural")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if attempts != edgeTTSRetryAttempts {
+		t.Fatalf("expected %d attempts, got %d", edgeTTSRetryAttempts, attempts)
+	}
+}
+
+func TestEdgeTTSErrorSnippet(t *testing.T) {
+	if got := edgeTTSErrorSnippet("  hello  "); got != "hello" {
+		t.Fatalf("unexpected snippet: %q", got)
+	}
+
+	long := ""
+	for i := 0; i < edgeTTSErrorSnippetRunes+10; i++ {
+		long += "测"
+	}
+	got := edgeTTSErrorSnippet(long)
+	if len([]rune(got)) != edgeTTSErrorSnippetRunes+3 {
+		t.Fatalf("unexpected snippet rune length: %d", len([]rune(got)))
 	}
 }
