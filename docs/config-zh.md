@@ -24,6 +24,9 @@
 | :----------------- | :------- | :---------------------------------------------------------------------------------------- | :---------------------- | :-------------------- |
 | `api.http`         | `object` | HTTP API 配置。                                                                           | (见具体字段)            | 否                    |
 | `api.http.address` | `string` | HTTP API 的地址 (`[host]:port`)。例如 `0.0.0.0:1300`。应用运行后不可更改。                | `:1300`                 | 否                    |
+| `api.http.auth_token` | `string` | 敏感 HTTP API 接口（当前为 `query_config` 和 `apply_config`）的可选访问令牌。支持 `Authorization: Bearer <token>` 或 `X-Zenfeed-Auth-Token`。 |                          | 建议配置               |
+| `api.http.disable_cors` | `bool` | 若为 `true`，会拒绝跨域浏览器请求并且不返回 CORS 头（同源请求仍可用）。 | `false` | 否 |
+| `api.http.allowed_origins` | `字符串列表` | 当 `disable_cors=false` 时生效的 CORS 白名单。`Origin` 不在列表中的请求会被拒绝。 | `["http://localhost:1400", "http://127.0.0.1:1400"]` | 否 |
 | `api.mcp`          | `object` | MCP API 配置。                                                                            | (见具体字段)            | 否                    |
 | `api.mcp.address`  | `string` | MCP API 的地址 (`[host]:port`)。例如 `0.0.0.0:1301`。应用运行后不可更改。                 | `:1301`                 | 否                    |
 | `api.llm`          | `string` | 用于总结 Feed 的 LLM 名称。例如 `my-favorite-gemini-king`。引用在 `llms` 部分定义的 LLM。 | `llms` 部分中的默认 LLM | 是 (如果使用总结功能) |

@@ -28,12 +28,6 @@ type Handler[Request any, Response any] func(ctx context.Context, req *Request) 
 
 func API[Request any, Response any](handler Handler[Request, Response]) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		allowCORS(w)
-
-		if r.Method == "OPTIONS" {
-			return
-		}
-
 		var req Request
 		if r.Body != http.NoBody {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -66,12 +60,4 @@ func API[Request any, Response any](handler Handler[Request, Response]) http.Han
 			return
 		}
 	})
-}
-
-func allowCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	w.Header().Set("Access-Control-Allow-Headers",
-		"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization",
-	)
 }

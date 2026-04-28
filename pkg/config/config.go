@@ -55,7 +55,10 @@ type App struct {
 	} `yaml:"telemetry,omitempty" json:"telemetry,omitempty" desc:"The telemetry config."`
 	API struct {
 		HTTP struct {
-			Address string `yaml:"address,omitempty" json:"address,omitempty" desc:"The address ([host]:port) of the HTTP API. e.g. 0.0.0.0:1300. Default: :1300. It can not be changed after the app is running."`
+			Address        string   `yaml:"address,omitempty" json:"address,omitempty" desc:"The address ([host]:port) of the HTTP API. e.g. 0.0.0.0:1300. Default: :1300. It can not be changed after the app is running."`
+			AuthToken      string   `yaml:"auth_token,omitempty" json:"auth_token,omitempty" desc:"Optional bearer token to protect sensitive HTTP API endpoints such as query_config and apply_config."`
+			DisableCORS    bool     `yaml:"disable_cors,omitempty" json:"disable_cors,omitempty" desc:"If true, reject cross-origin browser requests and do not return CORS headers."`
+			AllowedOrigins []string `yaml:"allowed_origins,omitempty" json:"allowed_origins,omitempty" desc:"CORS allowlist for HTTP API requests with Origin header. Requests from other origins will be rejected."`
 		} `yaml:"http,omitempty" json:"http,omitempty" desc:"The HTTP API config."`
 		MCP struct {
 			Address string `yaml:"address,omitempty" json:"address,omitempty" desc:"The address ([host]:port) of the MCP API. e.g. 0.0.0.0:1300. Default: :1301. It can not be changed after the app is running."`
