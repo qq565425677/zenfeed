@@ -50,7 +50,7 @@ func TestPickRSSDetailItem(t *testing.T) {
 
 	feed := &gofeed.Feed{
 		Items: []*gofeed.Item{
-			{Title: "fallback", Link: "https://example.com/other"},
+			{Title: "other", Link: "https://example.com/other"},
 			{Title: "matched", Link: "https://www.v2ex.com/t/1209036"},
 		},
 	}
@@ -58,4 +58,66 @@ func TestPickRSSDetailItem(t *testing.T) {
 	item := pickRSSDetailItem(feed, "https://www.v2ex.com/t/1209036/")
 	Expect(item).NotTo(BeNil())
 	Expect(item.Title).To(Equal("matched"))
+
+	item = pickRSSDetailItem(feed, "https://example.com/not-found")
+	Expect(item).To(BeNil())
+}
+
+func TestRSSDetailMarkdownContentPrefersExactItem(t *testing.T) {
+	RegisterTestingT(t)
+
+	feed := &gofeed.Feed{
+		Description: "feed description",
+		Items: []*gofeed.Item{
+			{
+				Title:       "matched",
+				Link:        "https://www.v2ex.com/t/1209036",
+				Description: "<p>exact item content</p>",
+			},
+			{
+				Title:       "comment",
+				Link:        "https://www.v2ex.com/t/1209036#r_1",
+				Description: "<p>comment content</p>",
+			},
+		},
+	}
+
+	content, err := rssDetailMarkdownContent(feed, "https://www.v2ex.com/t/1209036")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(content).To(ContainSubstring("exact item content"))
+	Expect(content).NotTo(ContainSubstring("comment content"))
+}
+
+func TestRSSDetailMarkdownContentCombinesPostAndComments(t *testing.T) {
+	RegisterTestingT(t)
+
+	feed := &gofeed.Feed{
+		Link:        "https://www.v2ex.com/t/1209036",
+		Description: "<p>main post body</p> - Powered by RSSHub",
+		Items: []*gofeed.Item{
+			{
+				Title:       "#2 another comment",
+				Link:        "https://www.v2ex.com/t/1209036#r_2",
+				Description: "<p>another comment body</p>",
+				Author:      &gofeed.Person{Name: "alice"},
+			},
+			{
+				Title:       "#1 first comment",
+				Link:        "https://www.v2ex.com/t/1209036#r_1",
+				Description: "<p>first comment body</p>",
+				Author:      &gofeed.Person{Name: "bob"},
+			},
+		},
+	}
+
+	content, err := rssDetailMarkdownContent(feed, "https://www.v2ex.com/t/1209036")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(content).To(ContainSubstring("main post body"))
+	Expect(content).To(ContainSubstring("## Discussion"))
+	Expect(content).To(ContainSubstring("### #2 another comment"))
+	Expect(content).To(ContainSubstring("Author: alice"))
+	Expect(content).To(ContainSubstring("another comment body"))
+	Expect(content).To(ContainSubstring("### #1 first comment"))
+	Expect(content).To(ContainSubstring("Author: bob"))
+	Expect(content).To(ContainSubstring("first comment body"))
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/glidea/zenfeed/pkg/model"
+	textconvert "github.com/glidea/zenfeed/pkg/util/text_convert"
 )
 
 func (c *ScrapeSourceRSSDetail) Validate(rsshubEndpoint string) error {
@@ -89,14 +90,9 @@ func (p *rssDetailPodcastSourceProvider) Resolve(ctx context.Context, labels mod
 		return "", false, errors.Wrapf(err, "fetch detail RSS %s", detailURL)
 	}
 
-	item := pickRSSDetailItem(feed, link)
-	if item == nil {
-		return "", false, errors.Errorf("detail RSS %s returned no items", detailURL)
-	}
-
-	content, err := rssItemMarkdownContent(item)
+	content, err := rssDetailMarkdownContent(feed, link)
 	if err != nil {
-		return "", false, errors.Wrap(err, "convert detail RSS item to markdown")
+		return "", false, errors.Wrap(err, "convert detail RSS to markdown")
 	}
 	if strings.TrimSpace(content) == "" {
 		return "", false, nil
@@ -141,7 +137,100 @@ func pickRSSDetailItem(feed *gofeed.Feed, originalLink string) *gofeed.Item {
 		}
 	}
 
-	return feed.Items[0]
+	return nil
+}
+
+func rssDetailMarkdownContent(feed *gofeed.Feed, originalLink string) (string, error) {
+	if item := pickRSSDetailItem(feed, originalLink); item != nil {
+		return rssItemMarkdownContent(item)
+	}
+
+	return rssDetailFeedMarkdownContent(feed)
+}
+
+func rssDetailFeedMarkdownContent(feed *gofeed.Feed) (string, error) {
+	if feed == nil {
+		return "", nil
+	}
+
+	var segments []string
+
+	description, err := rssDetailTextMarkdownContent(feed.Description)
+	if err != nil {
+		return "", errors.Wrap(err, "convert detail feed description to markdown")
+	}
+	if description != "" {
+		segments = append(segments, description)
+	}
+
+	var discussion []string
+	for _, item := range feed.Items {
+		block, err := rssDetailItemBlockMarkdownContent(item)
+		if err != nil {
+			return "", errors.Wrap(err, "convert detail feed item to markdown")
+		}
+		if block == "" {
+			continue
+		}
+
+		discussion = append(discussion, block)
+	}
+	if len(discussion) > 0 {
+		if len(segments) > 0 {
+			segments = append(segments, "## Discussion")
+		}
+		segments = append(segments, discussion...)
+	}
+
+	return strings.TrimSpace(strings.Join(segments, "\n\n")), nil
+}
+
+func rssDetailItemBlockMarkdownContent(item *gofeed.Item) (string, error) {
+	if item == nil {
+		return "", nil
+	}
+
+	content, err := rssItemMarkdownContent(item)
+	if err != nil {
+		return "", err
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "", nil
+	}
+
+	var parts []string
+	if title := strings.TrimSpace(item.Title); title != "" {
+		parts = append(parts, "### "+title)
+	}
+	if author := rssDetailAuthorName(item); author != "" {
+		parts = append(parts, "Author: "+author)
+	}
+	parts = append(parts, content)
+
+	return strings.Join(parts, "\n\n"), nil
+}
+
+func rssDetailTextMarkdownContent(content string) (string, error) {
+	content = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(content), "- Powered by RSSHub"))
+	if content == "" {
+		return "", nil
+	}
+
+	mdContent, err := textconvert.HTMLToMarkdown([]byte(content))
+	if err != nil {
+		return "", errors.Wrap(err, "convert html to markdown")
+	}
+
+	return strings.TrimSpace(string(mdContent)), nil
+}
+
+func rssDetailAuthorName(item *gofeed.Item) string {
+	if item == nil || item.Author == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(item.Author.Name)
 }
 
 func normalizeRSSDetailLink(link string) string {
