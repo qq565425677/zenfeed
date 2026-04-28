@@ -144,11 +144,30 @@
 
 | 字段                                         | 类型       | 描述                                                                                                      | 默认值                  | 是否必需 |
 | :------------------------------------------- | :--------- | :-------------------------------------------------------------------------------------------------------- | :---------------------- | :------- |
-| `...to_podcast.llm`                          | `string`   | 用于生成播客稿件的 LLM 名称 (来自 `llms` 部分)。                                                          | `llms` 部分中的默认 LLM | 否       |
-| `...to_podcast.transcript_additional_prompt` | `string`   | 附加到播客稿件生成 Prompt 的额外指令。                                                                    |                         | 否       |
-| `...to_podcast.tts_provider`                 | `string`   | TTS 提供商。支持值：`gemini`、`edge`。                                                                  | `gemini`                | 否       |
-| `...to_podcast.tts_llm`                      | `string`   | 当 `tts_provider` 为 `gemini` 时，用于文本转语音 (TTS) 的 LLM 名称 (来自 `llms` 部分)。                 | `llms` 部分中的默认 LLM | 否       |
-| `...to_podcast.speakers`                     | `对象列表` | 播客的演讲者列表。详见下方的 **演讲者配置**。                                                             | `[]`                    | 是       |
+| `...to_podcast.llm`                          | `string`   | 公共默认值：用于生成播客稿件的 LLM 名称 (来自 `llms` 部分)。会被 `default` / `profiles[]` 继承。        | `llms` 部分中的默认 LLM | 否       |
+| `...to_podcast.transcript_additional_prompt` | `string`   | 公共默认值：附加到播客稿件生成 Prompt 的额外指令。                                                        |                         | 否       |
+| `...to_podcast.tts_provider`                 | `string`   | 公共默认值：TTS 提供商。支持值：`gemini`、`edge`。                                                       | `gemini`                | 否       |
+| `...to_podcast.tts_llm`                      | `string`   | 公共默认值：当 `tts_provider` 为 `gemini` 时，用于文本转语音 (TTS) 的 LLM 名称。                         | `llms` 部分中的默认 LLM | 否       |
+| `...to_podcast.speakers`                     | `对象列表` | 公共默认值：播客演讲者列表。会被 `default` / `profiles[]` 继承。详见下方的 **演讲者配置**。              | `[]`                    | 否       |
+| `...to_podcast.default`                      | `object`   | 默认播客 Profile。所有 source 都先使用这套配置；若某个 `profiles[]` 命中，则在此基础上覆盖。            |                         | 建议     |
+| `...to_podcast.profiles`                     | `对象列表` | 按 source 生效的播客 Profile 列表。按顺序匹配，第一个命中的 profile 生效。详见下方的 **播客 Profile 配置**。 | `[]`                    | 否       |
+
+说明：
+
+- 建议始终提供 `to_podcast.default`，这样未命中任何 source-specific profile 的源也有稳定的默认行为。
+- 为了兼容旧配置，根级的 `llm` / `tts_provider` / `tts_llm` / `speakers` / `transcript_additional_prompt` 仍然有效，它们会作为公共默认值，再由 `default` 和 `profiles[]` 逐层覆盖。
+
+#### 播客 Profile 配置 (`...to_podcast.default` 和 `...to_podcast.profiles[]`)
+
+| 字段                                         | 类型       | 描述                                                                                             | 默认值 | 是否必需 |
+| :------------------------------------------- | :--------- | :----------------------------------------------------------------------------------------------- | :----- | :------- |
+| `...sources`                                 | `字符串列表` | 仅 `profiles[]` 使用；指定此 profile 对哪些 `source` 标签值生效。`default` 不应设置此字段。       | `[]`   | `profiles[]` 中必填 |
+| `...llm`                                     | `string`   | 当前 profile 使用的脚本生成 LLM；为空时继承上层。                                                |        | 否       |
+| `...estimate_maximum_duration`               | `duration` | 当前 profile 目标播客时长；为空时继承上层。                                                      |        | 否       |
+| `...transcript_additional_prompt`            | `string`   | 当前 profile 的额外脚本指令；为空时继承上层。                                                    |        | 否       |
+| `...tts_provider`                            | `string`   | 当前 profile 的 TTS 提供商；为空时继承上层。                                                     |        | 否       |
+| `...tts_llm`                                 | `string`   | 当前 profile 的 TTS LLM；为空时继承上层。                                                        |        | 否       |
+| `...speakers`                                | `对象列表` | 当前 profile 的 speaker 列表；为空时继承上层。详见下方的 **演讲者配置**。                        | `[]`   | 否       |
 
 #### 演讲者配置 (`...to_podcast.speakers[]`)
 

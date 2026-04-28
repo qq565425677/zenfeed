@@ -161,75 +161,9 @@ func (r *Rule) Validate() error { //nolint:cyclop,gocognit,funlen
 		}
 
 		if r.Transform.ToPodcast != nil {
-			if r.Transform.ToPodcast.TTSProvider == "" {
-				r.Transform.ToPodcast.TTSProvider = TTSProviderGemini
-			} else {
-				r.Transform.ToPodcast.TTSProvider = TTSProvider(strings.ToLower(string(r.Transform.ToPodcast.TTSProvider)))
+			if err := r.Transform.ToPodcast.validateAndPrepare(); err != nil {
+				return err
 			}
-			switch r.Transform.ToPodcast.TTSProvider {
-			case TTSProviderGemini, TTSProviderEdge:
-			default:
-				return errors.Errorf("invalid tts provider: %s", r.Transform.ToPodcast.TTSProvider)
-			}
-
-			if len(r.Transform.ToPodcast.Speakers) == 0 {
-				return errors.New("at least one speaker is required for to_podcast")
-			}
-
-			r.Transform.ToPodcast.speakers = make([]llm.Speaker, len(r.Transform.ToPodcast.Speakers))
-			var speakerDescs []string
-			var speakerNames []string
-			for i, s := range r.Transform.ToPodcast.Speakers {
-				if s.Name == "" {
-					return errors.New("speaker name is required")
-				}
-				if s.Voice == "" {
-					return errors.New("speaker voice is required")
-				}
-				r.Transform.ToPodcast.speakers[i] = llm.Speaker{Name: s.Name, Voice: s.Voice}
-
-				desc := s.Name
-				if s.Role != "" {
-					desc += " (" + s.Role + ")"
-				}
-				speakerDescs = append(speakerDescs, desc)
-				speakerNames = append(speakerNames, s.Name)
-			}
-
-			speakersDesc := "- " + strings.Join(speakerDescs, "\n- ")
-			exampleSpeaker1 := speakerNames[0]
-			exampleSpeaker2 := exampleSpeaker1
-			if len(speakerNames) > 1 {
-				exampleSpeaker2 = speakerNames[1]
-			}
-
-			promptSegments := []string{
-				"Please convert the following article into a podcast dialogue script.",
-				"The speakers are:\n" + speakersDesc,
-			}
-
-			if r.Transform.ToPodcast.EstimateMaximumDuration > 0 {
-				wordsPerMinute := 200
-				totalMinutes := int(r.Transform.ToPodcast.EstimateMaximumDuration.Minutes())
-				estimatedWords := totalMinutes * wordsPerMinute
-				promptSegments = append(promptSegments, fmt.Sprintf("The script should be approximately %d words to fit within a %d-minute duration. If the original content is not sufficient, the script can be shorter as appropriate.", estimatedWords, totalMinutes))
-			}
-
-			if r.Transform.ToPodcast.TranscriptAdditionalPrompt != "" {
-				promptSegments = append(promptSegments, "Additional instructions: "+r.Transform.ToPodcast.TranscriptAdditionalPrompt)
-			}
-
-			promptSegments = append(promptSegments,
-				"The output format MUST be a script where each line starts with the speaker's name followed by a colon and a space.",
-				"Do NOT include any other text, explanations, or formatting before or after the script.",
-				"Do NOT use background music in the script.",
-				"Do NOT include any greetings or farewells (e.g., 'Hello everyone', 'Welcome to our show', 'Goodbye').",
-				fmt.Sprintf("Example of the required format:\n%s: Today we are discussing the article's main points.\n%s: Let's start with the first one.", exampleSpeaker1, exampleSpeaker2),
-				"Now, convert the article.",
-			)
-
-			r.Transform.ToPodcast.transcriptPrompt = strings.Join(promptSegments, "\n\n")
-			r.Transform.ToPodcast.speakersDesc = speakersDesc
 		}
 	}
 
@@ -285,18 +219,21 @@ func (r *Rule) From(c *config.RewriteRule) {
 				TTSProvider:                TTSProvider(c.Transform.ToPodcast.TTSProvider),
 				TTSLLM:                     c.Transform.ToPodcast.TTSLLM,
 			}
-			if toPodcast.TTSProvider == "" {
-				toPodcast.TTSProvider = TTSProviderGemini
-			}
-			if toPodcast.EstimateMaximumDuration == 0 {
-				toPodcast.EstimateMaximumDuration = 3 * time.Minute
-			}
 			for _, s := range c.Transform.ToPodcast.Speakers {
 				toPodcast.Speakers = append(toPodcast.Speakers, Speaker{
 					Name:  s.Name,
 					Role:  s.Role,
 					Voice: s.Voice,
 				})
+			}
+			if c.Transform.ToPodcast.Default != nil {
+				toPodcast.Default = &ToPodcastProfile{}
+				toPodcast.Default.fromConfig(c.Transform.ToPodcast.Default)
+			}
+			for _, p := range c.Transform.ToPodcast.Profiles {
+				profile := ToPodcastProfile{}
+				profile.fromConfig(&p)
+				toPodcast.Profiles = append(toPodcast.Profiles, profile)
 			}
 			t.ToPodcast = toPodcast
 		}
@@ -336,16 +273,227 @@ type ToPodcast struct {
 	TTSProvider                TTSProvider
 	TTSLLM                     string
 	Speakers                   []Speaker
+	Default                    *ToPodcastProfile
+	Profiles                   []ToPodcastProfile
 
-	transcriptPrompt string
-	speakersDesc     string
-	speakers         []llm.Speaker
+	defaultProfile *ToPodcastProfile
+	profiles       []ToPodcastProfile
 }
 
 type Speaker struct {
 	Name  string
 	Role  string
 	Voice string
+}
+
+type ToPodcastProfile struct {
+	Sources                    []string
+	LLM                        string
+	EstimateMaximumDuration    time.Duration
+	TranscriptAdditionalPrompt string
+	TTSProvider                TTSProvider
+	TTSLLM                     string
+	Speakers                   []Speaker
+
+	transcriptPrompt string
+	speakersDesc     string
+	speakers         []llm.Speaker
+}
+
+func (p *ToPodcastProfile) fromConfig(c *config.RewriteRuleTransformToPodcastProfile) {
+	p.Sources = append([]string(nil), c.Sources...)
+	p.LLM = c.LLM
+	p.EstimateMaximumDuration = time.Duration(c.EstimateMaximumDuration)
+	p.TranscriptAdditionalPrompt = c.TranscriptAdditionalPrompt
+	p.TTSProvider = TTSProvider(c.TTSProvider)
+	p.TTSLLM = c.TTSLLM
+	for _, s := range c.Speakers {
+		p.Speakers = append(p.Speakers, Speaker{
+			Name:  s.Name,
+			Role:  s.Role,
+			Voice: s.Voice,
+		})
+	}
+}
+
+func (t *ToPodcast) validateAndPrepare() error {
+	baseProfile := ToPodcastProfile{
+		LLM:                        t.LLM,
+		EstimateMaximumDuration:    t.EstimateMaximumDuration,
+		TranscriptAdditionalPrompt: t.TranscriptAdditionalPrompt,
+		TTSProvider:                t.TTSProvider,
+		TTSLLM:                     t.TTSLLM,
+		Speakers:                   cloneSpeakers(t.Speakers),
+	}
+	if t.Default != nil && len(t.Default.Sources) > 0 {
+		return errors.New("to_podcast.default can not set sources")
+	}
+
+	effectiveDefault := mergePodcastProfile(baseProfile, t.Default)
+	preparedDefault, err := preparePodcastProfile(effectiveDefault)
+	if err != nil {
+		return errors.Wrap(err, "invalid default to_podcast profile")
+	}
+	t.defaultProfile = preparedDefault
+
+	t.profiles = nil
+	for i := range t.Profiles {
+		profile := t.Profiles[i]
+		if len(profile.Sources) == 0 {
+			return errors.Errorf("sources is required for to_podcast profiles[%d]", i)
+		}
+		for _, source := range profile.Sources {
+			if source == "" {
+				return errors.Errorf("empty source is not allowed in to_podcast profiles[%d]", i)
+			}
+		}
+
+		preparedProfile, err := preparePodcastProfile(mergePodcastProfile(effectiveDefault, &profile))
+		if err != nil {
+			return errors.Wrapf(err, "invalid to_podcast profile for sources %v", profile.Sources)
+		}
+		preparedProfile.Sources = append([]string(nil), profile.Sources...)
+		t.profiles = append(t.profiles, *preparedProfile)
+	}
+
+	return nil
+}
+
+func (t *ToPodcast) profileForSource(source string) *ToPodcastProfile {
+	for i := range t.profiles {
+		profile := &t.profiles[i]
+		for _, candidate := range profile.Sources {
+			if candidate == source {
+				return profile
+			}
+		}
+	}
+
+	return t.defaultProfile
+}
+
+func mergePodcastProfile(base ToPodcastProfile, override *ToPodcastProfile) ToPodcastProfile {
+	merged := ToPodcastProfile{
+		Sources:                    append([]string(nil), base.Sources...),
+		LLM:                        base.LLM,
+		EstimateMaximumDuration:    base.EstimateMaximumDuration,
+		TranscriptAdditionalPrompt: base.TranscriptAdditionalPrompt,
+		TTSProvider:                base.TTSProvider,
+		TTSLLM:                     base.TTSLLM,
+		Speakers:                   cloneSpeakers(base.Speakers),
+	}
+	if override == nil {
+		return merged
+	}
+
+	if len(override.Sources) > 0 {
+		merged.Sources = append([]string(nil), override.Sources...)
+	}
+	if override.LLM != "" {
+		merged.LLM = override.LLM
+	}
+	if override.EstimateMaximumDuration > 0 {
+		merged.EstimateMaximumDuration = override.EstimateMaximumDuration
+	}
+	if override.TranscriptAdditionalPrompt != "" {
+		merged.TranscriptAdditionalPrompt = override.TranscriptAdditionalPrompt
+	}
+	if override.TTSProvider != "" {
+		merged.TTSProvider = override.TTSProvider
+	}
+	if override.TTSLLM != "" {
+		merged.TTSLLM = override.TTSLLM
+	}
+	if len(override.Speakers) > 0 {
+		merged.Speakers = cloneSpeakers(override.Speakers)
+	}
+
+	return merged
+}
+
+func preparePodcastProfile(profile ToPodcastProfile) (*ToPodcastProfile, error) {
+	if profile.TTSProvider == "" {
+		profile.TTSProvider = TTSProviderGemini
+	} else {
+		profile.TTSProvider = TTSProvider(strings.ToLower(string(profile.TTSProvider)))
+	}
+	switch profile.TTSProvider {
+	case TTSProviderGemini, TTSProviderEdge:
+	default:
+		return nil, errors.Errorf("invalid tts provider: %s", profile.TTSProvider)
+	}
+	if profile.EstimateMaximumDuration == 0 {
+		profile.EstimateMaximumDuration = 3 * time.Minute
+	}
+	if len(profile.Speakers) == 0 {
+		return nil, errors.New("at least one speaker is required for to_podcast")
+	}
+
+	profile.speakers = make([]llm.Speaker, len(profile.Speakers))
+	var speakerDescs []string
+	var speakerNames []string
+	for i, s := range profile.Speakers {
+		if s.Name == "" {
+			return nil, errors.New("speaker name is required")
+		}
+		if s.Voice == "" {
+			return nil, errors.New("speaker voice is required")
+		}
+		profile.speakers[i] = llm.Speaker{Name: s.Name, Voice: s.Voice}
+
+		desc := s.Name
+		if s.Role != "" {
+			desc += " (" + s.Role + ")"
+		}
+		speakerDescs = append(speakerDescs, desc)
+		speakerNames = append(speakerNames, s.Name)
+	}
+
+	profile.speakersDesc = "- " + strings.Join(speakerDescs, "\n- ")
+	exampleSpeaker1 := speakerNames[0]
+	exampleSpeaker2 := exampleSpeaker1
+	if len(speakerNames) > 1 {
+		exampleSpeaker2 = speakerNames[1]
+	}
+
+	promptSegments := []string{
+		"Please convert the following article into a podcast dialogue script.",
+		"The speakers are:\n" + profile.speakersDesc,
+	}
+
+	if profile.EstimateMaximumDuration > 0 {
+		wordsPerMinute := 200
+		totalMinutes := int(profile.EstimateMaximumDuration.Minutes())
+		estimatedWords := totalMinutes * wordsPerMinute
+		promptSegments = append(promptSegments, fmt.Sprintf("The script should be approximately %d words to fit within a %d-minute duration. If the original content is not sufficient, the script can be shorter as appropriate.", estimatedWords, totalMinutes))
+	}
+
+	if profile.TranscriptAdditionalPrompt != "" {
+		promptSegments = append(promptSegments, "Additional instructions: "+profile.TranscriptAdditionalPrompt)
+	}
+
+	promptSegments = append(promptSegments,
+		"The output format MUST be a script where each line starts with the speaker's name followed by a colon and a space.",
+		"Do NOT include any other text, explanations, or formatting before or after the script.",
+		"Do NOT use background music in the script.",
+		"Do NOT include any greetings or farewells (e.g., 'Hello everyone', 'Welcome to our show', 'Goodbye').",
+		fmt.Sprintf("Example of the required format:\n%s: Today we are discussing the article's main points.\n%s: Let's start with the first one.", exampleSpeaker1, exampleSpeaker2),
+		"Now, convert the article.",
+	)
+	profile.transcriptPrompt = strings.Join(promptSegments, "\n\n")
+
+	return &profile, nil
+}
+
+func cloneSpeakers(speakers []Speaker) []Speaker {
+	if len(speakers) == 0 {
+		return nil
+	}
+
+	cloned := make([]Speaker, len(speakers))
+	copy(cloned, speakers)
+
+	return cloned
 }
 
 type TTSProvider string
@@ -445,7 +593,7 @@ func (r *rewriter) Labels(ctx context.Context, labels model.Labels) (rewritten m
 		}
 
 		// Transform text if configured.
-		text, err := r.transform(ctx, rule.Transform, sourceText)
+		text, err := r.transform(ctx, rule.Transform, labels, sourceText)
 		if err != nil {
 			return nil, errors.Wrap(err, "transform")
 		}
@@ -469,7 +617,7 @@ func (r *rewriter) Labels(ctx context.Context, labels model.Labels) (rewritten m
 	return labels, nil
 }
 
-func (r *rewriter) transform(ctx context.Context, transform *Transform, sourceText string) (string, error) {
+func (r *rewriter) transform(ctx context.Context, transform *Transform, labels model.Labels, sourceText string) (string, error) {
 	if transform == nil {
 		return sourceText, nil
 	}
@@ -479,7 +627,7 @@ func (r *rewriter) transform(ctx context.Context, transform *Transform, sourceTe
 	}
 
 	if transform.ToPodcast != nil {
-		return r.transformPodcast(ctx, transform.ToPodcast, sourceText)
+		return r.transformPodcast(ctx, transform.ToPodcast, labels, sourceText)
 	}
 
 	return sourceText, nil
@@ -542,8 +690,8 @@ var audioKey = func(transcript, ext string) string {
 	return "podcasts/" + file
 }
 
-func (t *ToPodcast) audioFormat() (ext, contentType string) {
-	switch t.TTSProvider {
+func (p *ToPodcastProfile) audioFormat() (ext, contentType string) {
+	switch p.TTSProvider {
 	case TTSProviderEdge:
 		return "mp3", "audio/mpeg"
 	default:
@@ -551,14 +699,15 @@ func (t *ToPodcast) audioFormat() (ext, contentType string) {
 	}
 }
 
-func (r *rewriter) transformPodcast(ctx context.Context, toPodcast *ToPodcast, sourceText string) (url string, err error) {
-	transcript, err := r.generateTranscript(ctx, toPodcast, sourceText)
+func (r *rewriter) transformPodcast(ctx context.Context, toPodcast *ToPodcast, labels model.Labels, sourceText string) (url string, err error) {
+	profile := toPodcast.profileForSource(labels.Get(model.LabelSource))
+	transcript, err := r.generateTranscript(ctx, profile, labels, sourceText)
 	if err != nil {
 		return "", errors.Wrap(err, "generate podcast transcript")
 	}
 
-	audioExt, contentType := toPodcast.audioFormat()
-	audioKey := audioKey(string(toPodcast.TTSProvider)+"\n"+transcript, audioExt)
+	audioExt, contentType := profile.audioFormat()
+	audioKey := audioKey(string(profile.TTSProvider)+"\n"+transcript, audioExt)
 	url, err = r.Dependencies().ObjectStorage.Get(ctx, audioKey)
 	switch {
 	case err == nil:
@@ -570,7 +719,7 @@ func (r *rewriter) transformPodcast(ctx context.Context, toPodcast *ToPodcast, s
 		return "", errors.Wrap(err, "get audio")
 	}
 
-	audioStream, err := r.generateAudio(ctx, toPodcast, transcript)
+	audioStream, err := r.generateAudio(ctx, profile, transcript)
 	if err != nil {
 		return "", errors.Wrap(err, "generate podcast audio")
 	}
@@ -588,22 +737,22 @@ func (r *rewriter) transformPodcast(ctx context.Context, toPodcast *ToPodcast, s
 	return url, nil
 }
 
-func (r *rewriter) generateTranscript(ctx context.Context, toPodcast *ToPodcast, sourceText string) (string, error) {
-	transcript, err := r.Dependencies().LLMFactory.Get(toPodcast.LLM).
-		String(ctx, []string{toPodcast.transcriptPrompt, sourceText})
+func (r *rewriter) generateTranscript(ctx context.Context, profile *ToPodcastProfile, labels model.Labels, sourceText string) (string, error) {
+	transcript, err := r.Dependencies().LLMFactory.Get(profile.LLM).
+		String(ctx, []string{profile.transcriptPrompt, podcastSourceText(labels, sourceText)})
 	if err != nil {
 		return "", errors.Wrap(err, "llm completion")
 	}
 
-	return toPodcast.speakersDesc +
+	return profile.speakersDesc +
 		"\n\nFollowed by the actual dialogue script:\n" +
 		transcript, nil
 }
 
-func (r *rewriter) generateAudio(ctx context.Context, toPodcast *ToPodcast, transcript string) (io.ReadCloser, error) {
-	switch toPodcast.TTSProvider {
+func (r *rewriter) generateAudio(ctx context.Context, profile *ToPodcastProfile, transcript string) (io.ReadCloser, error) {
+	switch profile.TTSProvider {
 	case TTSProviderEdge:
-		audioStream, err := edgeTTSMP3(ctx, transcript, toPodcast.Speakers)
+		audioStream, err := edgeTTSMP3(ctx, transcript, profile.Speakers)
 		if err != nil {
 			return nil, errors.Wrap(err, "calling edge tts")
 		}
@@ -613,14 +762,27 @@ func (r *rewriter) generateAudio(ctx context.Context, toPodcast *ToPodcast, tran
 	case TTSProviderGemini:
 		fallthrough
 	default:
-		audioStream, err := r.Dependencies().LLMFactory.Get(toPodcast.TTSLLM).
-			WAV(ctx, transcript, toPodcast.speakers)
+		audioStream, err := r.Dependencies().LLMFactory.Get(profile.TTSLLM).
+			WAV(ctx, transcript, profile.speakers)
 		if err != nil {
 			return nil, errors.Wrap(err, "calling tts llm")
 		}
 
 		return audioStream, nil
 	}
+}
+
+func podcastSourceText(labels model.Labels, sourceText string) string {
+	var segments []string
+	if source := labels.Get(model.LabelSource); source != "" {
+		segments = append(segments, "Source: "+source)
+	}
+	if title := labels.Get(model.LabelTitle); title != "" {
+		segments = append(segments, "Title: "+title)
+	}
+	segments = append(segments, "Article:\n"+sourceText)
+
+	return strings.Join(segments, "\n")
 }
 
 type mockRewriter struct {

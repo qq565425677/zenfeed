@@ -66,16 +66,16 @@ storage:
 
 ### 3. 配置重写规则
 
-最后一步是创建一个重写规则，告诉 Zenfeed 如何将文章转换为播客。这个规则定义了使用哪个标签作为源文本、由谁来对话、使用什么声音等。
+最后一步是创建一个重写规则，告诉 Zenfeed 如何将文章转换为播客。这个规则定义了使用哪个标签作为源文本、由谁来对话、使用什么声音等。推荐使用“默认 profile + source 定向 profile”的方式配置，这样 V2EX、微博、小红书等不同来源可以使用不同的人设和脚本风格。
 
 **关键配置项:**
 
 -   `source_label`: 包含文章全文的标签。
 -   `label`: 用于存储最终播客对象 key 的新标签名称。
 -   `transform.to_podcast`: 播客转换的核心配置。
-    -   `llm`: 用于生成脚本的 LLM 名称（来自 `llms` 配置）。
-    -   `tts_provider`: TTS 提供商，支持 `gemini` 或 `edge`。
-    -   `tts_llm`: 用于 TTS 的 LLM 名称（来自 `llms` 配置，仅 `tts_provider: gemini` 时需要）。
+    -   `default`: 默认播客 profile，未命中 source-specific profile 时使用。
+    -   `profiles`: 可选的 source-specific profile 列表，按顺序匹配第一个命中的 `sources`。
+    -   根级 `llm` / `tts_provider` / `tts_llm` / `speakers` / `transcript_additional_prompt` 仍可作为公共默认值被继承。
     -   `speakers`: 定义播客的演讲者。
         -   `name`: 演讲者的名字。
         -   `role`: 演讲者的角色和人设，将影响脚本内容。
@@ -90,20 +90,32 @@ storage:
       - source_label: content # 基于原文
         transform:
           to_podcast:
-            estimate_maximum_duration: 3m0s # 接近 3 分钟
-            transcript_additional_prompt: 对话引人入胜，流畅自然，拒绝 AI 味，使用中文回复 # 脚本内容要求
-            llm: xxxx # 负责生成脚本的 llm
+            llm: xxxx # 公共默认值，可被 default/profiles 继承
             tts_provider: gemini # 或 edge
             tts_llm: gemini-tts # 仅当 tts_provider=gemini 时需要
-            speakers:
-              - name: 小雅
-                role: >-
-                  一位经验丰富、声音甜美、风格活泼的科技播客主持人。前财经记者、媒体人出身，因为工作原因长期关注科技行业，后来凭着热爱和出色的口才转行做了全职内容创作者。擅长从普通用户视角出发，把复杂的技术概念讲得生动有趣，是她发掘了老王，并把他‘骗’来一起做播客的‘始作俑者’。
-                voice: Autonoe
-              - name: 老王
-                role: >-
-                  一位资深科技评论员，互联网老兵。亲身经历过中国互联网从草莽到巨头的全过程，当过程序员，做过产品经理，也创过业。因此他对行业的各种‘风口’和‘概念’有自己独到的、甚至有些刻薄的见解。观点犀利，一针见血，说话直接，热衷于给身边的一切产品挑刺。被‘忽悠’上了‘贼船’，表面上经常吐槽，但内心很享受这种分享观点的感觉。
-                voice: Puck
+            default:
+              estimate_maximum_duration: 3m0s
+              transcript_additional_prompt: >-
+                对话引人入胜，流畅自然，拒绝 AI 味，使用中文回复。
+                默认按“信息提炼 + 观点碰撞”的中文科技播客来写。
+              speakers:
+                - name: 小雅
+                  role: >-
+                    一位经验丰富、声音甜美、风格活泼的科技播客主持人。前财经记者、媒体人出身，因为工作原因长期关注科技行业，后来凭着热爱和出色的口才转行做了全职内容创作者。擅长从普通用户视角出发，把复杂的技术概念讲得生动有趣，是她发掘了老王，并把他‘骗’来一起做播客的‘始作俑者’。
+                  voice: Autonoe
+                - name: 老王
+                  role: >-
+                    一位资深科技评论员，互联网老兵。亲身经历过中国互联网从草莽到巨头的全过程，当过程序员，做过产品经理，也创过业。因此他对行业的各种‘风口’和‘概念’有自己独到的、甚至有些刻薄的见解。观点犀利，一针见血，说话直接，热衷于给身边的一切产品挑刺。被‘忽悠’上了‘贼船’，表面上经常吐槽，但内心很享受这种分享观点的感觉。
+                  voice: Puck
+            profiles:
+              - sources: [微博, 小红书]
+                transcript_additional_prompt: >-
+                  这类内容更偏社交媒体语境。请优先提炼事件、情绪、争议点和用户感受，
+                  少用“论坛帖子”“原文作者”等措辞，不要把内容讲成技术论坛串楼复述。
+              - sources: [V2EX]
+                transcript_additional_prompt: >-
+                  保留论坛讨论氛围，可以适当呈现楼主观点、评论分歧和社区语境，
+                  但仍然要整理成自然播客对话，不要逐条念回复。
         label: podcast_url
 ```
 

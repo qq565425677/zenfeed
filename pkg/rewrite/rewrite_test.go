@@ -269,6 +269,74 @@ func TestLabels(t *testing.T) {
 			},
 		},
 		{
+			Scenario: "Select source-specific podcast profile",
+			Given:    "a default podcast profile plus a Weibo-specific override",
+			When:     "processing a feed whose source is Weibo",
+			Then:     "should use the Weibo profile prompt and speakers",
+			GivenDetail: givenDetail{
+				config: &Config{
+					{
+						SourceLabel: model.LabelContent,
+						Transform: &Transform{
+							ToPodcast: &ToPodcast{
+								LLM:      "mock-llm-transcript",
+								TTSLLM:   "mock-llm-tts",
+								Speakers: []Speaker{{Name: "default-host", Voice: "alloy"}},
+								Default: &ToPodcastProfile{
+									TranscriptAdditionalPrompt: "default style",
+								},
+								Profiles: []ToPodcastProfile{
+									{
+										Sources:                    []string{"Weibo"},
+										TranscriptAdditionalPrompt: "focus on hot topics and social reactions",
+										Speakers:                   []Speaker{{Name: "weibo-host", Voice: "echo"}},
+									},
+								},
+							},
+						},
+						Action: ActionCreateOrUpdateLabel,
+						Label:  "podcast_url",
+					},
+				},
+				llmMock: func(m *mock.Mock) {
+					m.On("String", mock.Anything, mock.MatchedBy(func(parts []string) bool {
+						return len(parts) == 2 &&
+							strings.Contains(parts[0], "focus on hot topics and social reactions") &&
+							!strings.Contains(parts[0], "Additional instructions: default style") &&
+							strings.Contains(parts[1], "Source: Weibo") &&
+							strings.Contains(parts[1], "Title: 微博热搜") &&
+							strings.Contains(parts[1], "Article:\n微博内容")
+					})).Return("This is the podcast script.", nil).Once()
+					m.On("WAV", mock.Anything, mock.Anything, mock.MatchedBy(func(speakers []llm.Speaker) bool {
+						return len(speakers) == 1 &&
+							speakers[0].Name == "weibo-host" &&
+							speakers[0].Voice == "echo"
+					})).Return(io.NopCloser(strings.NewReader("fake audio data")), nil).Once()
+				},
+				objectStorageMock: func(m *mock.Mock) {
+					m.On("Put", mock.Anything, mock.AnythingOfType("string"), mock.Anything, "audio/wav").
+						Return("podcasts/test.wav", nil).Once()
+					m.On("Get", mock.Anything, mock.AnythingOfType("string")).Return("", object.ErrNotFound).Once()
+				},
+			},
+			WhenDetail: whenDetail{
+				inputLabels: model.Labels{
+					{Key: model.LabelSource, Value: "Weibo"},
+					{Key: model.LabelTitle, Value: "微博热搜"},
+					{Key: model.LabelContent, Value: "微博内容"},
+				},
+			},
+			ThenExpected: thenExpected{
+				outputLabels: model.Labels{
+					{Key: model.LabelSource, Value: "Weibo"},
+					{Key: model.LabelTitle, Value: "微博热搜"},
+					{Key: model.LabelContent, Value: "微博内容"},
+					{Key: "podcast_url", Value: "podcasts/test.wav"},
+				},
+				isErr: false,
+			},
+		},
+		{
 			Scenario: "Fail podcast generation due to transcription LLM error",
 			Given:    "a rule to convert content to a podcast, but the transcription LLM is mocked to fail",
 			When:     "processing labels",
@@ -455,6 +523,30 @@ func TestRuleValidate_InvalidTTSProvider(t *testing.T) {
 		t.Fatal("expected error for invalid tts provider, got nil")
 	}
 	if !strings.Contains(err.Error(), "invalid tts provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRuleValidate_PodcastProfileWithoutSources(t *testing.T) {
+	rule := Rule{
+		SourceLabel: model.LabelContent,
+		Transform: &Transform{
+			ToPodcast: &ToPodcast{
+				Speakers: []Speaker{{Name: "narrator", Voice: "alloy"}},
+				Profiles: []ToPodcastProfile{
+					{Speakers: []Speaker{{Name: "weibo-host", Voice: "echo"}}},
+				},
+			},
+		},
+		Action: ActionCreateOrUpdateLabel,
+		Label:  "podcast_url",
+	}
+
+	err := rule.Validate()
+	if err == nil {
+		t.Fatal("expected error for podcast profile without sources, got nil")
+	}
+	if !strings.Contains(err.Error(), "sources is required") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

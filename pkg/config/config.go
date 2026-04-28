@@ -163,17 +163,29 @@ type RewriteRuleTransformToText struct {
 
 type RewriteRuleTransformToPodcast struct {
 	LLM                        string                                 `yaml:"llm,omitempty" json:"llm,omitempty" desc:"The LLM name to use. Default is the default LLM in llms section."`
-	EstimateMaximumDuration    timeutil.Duration                      `yaml:"estimate_maximum_duration,omitempty" json:"estimate_maximum_duration,omitempty" desc:"The estimated maximum duration of the podcast. It will affect the length of the generated transcript. e.g. 5m. Default is 5m."`
+	EstimateMaximumDuration    timeutil.Duration                      `yaml:"estimate_maximum_duration,omitempty" json:"estimate_maximum_duration,omitempty" desc:"The estimated maximum duration of the podcast. It will affect the length of the generated transcript. e.g. 5m. Default is 3m."`
 	TranscriptAdditionalPrompt string                                 `yaml:"transcript_additional_prompt,omitempty" json:"transcript_additional_prompt,omitempty" desc:"The additional prompt to add to the transcript. It is optional."`
 	TTSProvider                string                                 `yaml:"tts_provider,omitempty" json:"tts_provider,omitempty" desc:"The provider to use for TTS. Supported values: gemini, edge. Default is gemini."`
 	TTSLLM                     string                                 `yaml:"tts_llm,omitempty" json:"tts_llm,omitempty" desc:"The LLM name to use for TTS when tts_provider is gemini. Default is the default LLM in llms section."`
 	Speakers                   []RewriteRuleTransformToPodcastSpeaker `yaml:"speakers,omitempty" json:"speakers,omitempty" desc:"The speakers to use. It is required, at least one speaker is needed."`
+	Default                    *RewriteRuleTransformToPodcastProfile  `yaml:"default,omitempty" json:"default,omitempty" desc:"The default podcast profile. It is applied to all sources unless a profile in profiles matches and overrides it."`
+	Profiles                   []RewriteRuleTransformToPodcastProfile `yaml:"profiles,omitempty" json:"profiles,omitempty" desc:"Optional source-specific podcast profiles. The first profile whose sources contains the current feed source will override the default podcast profile."`
 }
 
 type RewriteRuleTransformToPodcastSpeaker struct {
 	Name  string `yaml:"name,omitempty" json:"name,omitempty" desc:"The name of the speaker. It is required."`
 	Role  string `yaml:"role,omitempty" json:"role,omitempty" desc:"The role description of the speaker. You can think of it as a character setting."`
 	Voice string `yaml:"voice,omitempty" json:"voice,omitempty" desc:"The voice of the speaker. It is required."`
+}
+
+type RewriteRuleTransformToPodcastProfile struct {
+	Sources                    []string                               `yaml:"sources,omitempty" json:"sources,omitempty" desc:"The source names this profile applies to. Only used in profiles; default should leave it empty."`
+	LLM                        string                                 `yaml:"llm,omitempty" json:"llm,omitempty" desc:"The LLM name to use for this podcast profile. If empty, inherits from the parent to_podcast config or default profile."`
+	EstimateMaximumDuration    timeutil.Duration                      `yaml:"estimate_maximum_duration,omitempty" json:"estimate_maximum_duration,omitempty" desc:"The estimated maximum duration of the podcast for this profile. If empty, inherits from the parent to_podcast config or default profile."`
+	TranscriptAdditionalPrompt string                                 `yaml:"transcript_additional_prompt,omitempty" json:"transcript_additional_prompt,omitempty" desc:"Additional transcript instructions for this profile. If empty, inherits from the parent to_podcast config or default profile."`
+	TTSProvider                string                                 `yaml:"tts_provider,omitempty" json:"tts_provider,omitempty" desc:"The TTS provider for this profile. Supported values: gemini, edge. If empty, inherits from the parent to_podcast config or default profile."`
+	TTSLLM                     string                                 `yaml:"tts_llm,omitempty" json:"tts_llm,omitempty" desc:"The TTS LLM name for this profile when tts_provider is gemini. If empty, inherits from the parent to_podcast config or default profile."`
+	Speakers                   []RewriteRuleTransformToPodcastSpeaker `yaml:"speakers,omitempty" json:"speakers,omitempty" desc:"The speakers for this profile. If empty, inherits from the parent to_podcast config or default profile."`
 }
 
 type SchedulsRule struct {

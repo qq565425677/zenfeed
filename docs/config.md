@@ -144,11 +144,30 @@ This configuration defines how to transform the text from `source_label` into a 
 
 | Field                                        | Type              | Description                                                                                                                                    | Default Value                 | Required |
 | :------------------------------------------- | :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------- | :------- |
-| `...to_podcast.llm`                          | `string`          | The name of the LLM (from the `llms` section) to use for generating the podcast script.                                                        | Default LLM in `llms` section | No       |
-| `...to_podcast.transcript_additional_prompt` | `string`          | Additional instructions to append to the prompt for generating the podcast script.                                                             |                               | No       |
-| `...to_podcast.tts_provider`                 | `string`          | TTS provider. Supported values: `gemini`, `edge`.                                                                                              | `gemini`                      | No       |
-| `...to_podcast.tts_llm`                      | `string`          | The name of the LLM (from the `llms` section) to use for Text-to-Speech (TTS), when `tts_provider` is `gemini`.                              | Default LLM in `llms` section | No       |
-| `...to_podcast.speakers`                     | `list of objects` | A list of speakers for the podcast. See **Speaker Configuration** below.                                                                       | `[]`                          | Yes      |
+| `...to_podcast.llm`                          | `string`          | Common default value for the podcast-script LLM. Inherited by `default` and `profiles[]`.                                                     | Default LLM in `llms` section | No       |
+| `...to_podcast.transcript_additional_prompt` | `string`          | Common default value for extra transcript instructions. Inherited by `default` and `profiles[]`.                                              |                               | No       |
+| `...to_podcast.tts_provider`                 | `string`          | Common default value for the TTS provider. Supported values: `gemini`, `edge`. Inherited by `default` and `profiles[]`.                      | `gemini`                      | No       |
+| `...to_podcast.tts_llm`                      | `string`          | Common default value for the TTS LLM when `tts_provider` is `gemini`. Inherited by `default` and `profiles[]`.                               | Default LLM in `llms` section | No       |
+| `...to_podcast.speakers`                     | `list of objects` | Common default list of speakers. Inherited by `default` and `profiles[]`. See **Speaker Configuration** below.                                | `[]`                          | No       |
+| `...to_podcast.default`                      | `object`          | Default podcast profile. Every source starts from this profile, then the first matching entry in `profiles[]` may override it.                |                               | Recommended |
+| `...to_podcast.profiles`                     | `list of objects` | Source-specific podcast profiles. Matched in order; the first profile whose `sources` contains the current feed source wins.                  | `[]`                          | No       |
+
+Notes:
+
+- It is recommended to always provide `to_podcast.default`, so unmatched sources still get a stable fallback.
+- For backward compatibility, the top-level `llm` / `tts_provider` / `tts_llm` / `speakers` / `transcript_additional_prompt` fields still work as common defaults before `default` and `profiles[]` are applied.
+
+#### Podcast Profile Configuration (`...to_podcast.default` and `...to_podcast.profiles[]`)
+
+| Field                              | Type              | Description                                                                                              | Default Value | Required |
+| :--------------------------------- | :---------------- | :------------------------------------------------------------------------------------------------------- | :------------ | :------- |
+| `...sources`                       | `list of strings` | Only used in `profiles[]`; the profile applies when the current feed `source` label is in this list.    | `[]`          | Yes, in `profiles[]` |
+| `...llm`                           | `string`          | LLM for this profile. Inherits from the parent/default if omitted.                                       |               | No       |
+| `...estimate_maximum_duration`     | `duration`        | Target podcast duration for this profile. Inherits from the parent/default if omitted.                   |               | No       |
+| `...transcript_additional_prompt`  | `string`          | Extra transcript instructions for this profile. Inherits from the parent/default if omitted.             |               | No       |
+| `...tts_provider`                  | `string`          | TTS provider for this profile. Inherits from the parent/default if omitted.                              |               | No       |
+| `...tts_llm`                       | `string`          | TTS LLM for this profile. Inherits from the parent/default if omitted.                                   |               | No       |
+| `...speakers`                      | `list of objects` | Speakers for this profile. Inherits from the parent/default if omitted. See **Speaker Configuration** below. | `[]`       | No       |
 
 #### Speaker Configuration (`...to_podcast.speakers[]`)
 
