@@ -54,6 +54,9 @@ func TestAddPodcastSource(t *testing.T) {
 	updated := s.addPodcastSource(context.Background(), feeds)
 	Expect(updated).To(HaveLen(3))
 	Expect(updated[0].Labels.Get(model.LabelPodcastSource)).To(Equal("detail markdown"))
+	Expect(updated[0].Labels.Get(model.LabelContentOrigin)).To(Equal(model.ContentOriginFull))
 	Expect(updated[1].Labels.Get(model.LabelPodcastSource)).To(Equal("list content 2"))
+	Expect(updated[1].Labels.Get(model.LabelContentOrigin)).To(Equal(model.ContentOriginOverview))
 	Expect(updated[2].Labels.Get(model.LabelPodcastSource)).To(Equal("list content 3"))
+	Expect(updated[2].Labels.Get(model.LabelContentOrigin)).To(Equal(model.ContentOriginOverview))
 }

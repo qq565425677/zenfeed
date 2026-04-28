@@ -41,8 +41,14 @@ const (
 	LabelLink          = "link"
 	LabelPubTime       = "pub_time"
 	LabelContent       = "content"
+	LabelContentOrigin = "content_origin"
 	LabelPodcastSource = "podcast_source"
 	LabelPodcast       = "podcast_url"
+)
+
+const (
+	ContentOriginOverview = "overview"
+	ContentOriginFull     = "full"
 )
 
 // Feed is core data model for a feed.

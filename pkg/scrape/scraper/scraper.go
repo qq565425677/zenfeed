@@ -304,6 +304,10 @@ func (s *scraper) addPodcastSource(ctx context.Context, feeds []*model.Feed) []*
 		return feeds
 	}
 
+	for _, feed := range feeds {
+		feed.Labels.Put(model.LabelContentOrigin, model.ContentOriginOverview, false)
+	}
+
 	var wg sync.WaitGroup
 	for _, feed := range feeds {
 		wg.Add(1)
@@ -321,6 +325,7 @@ func (s *scraper) addPodcastSource(ctx context.Context, feeds []*model.Feed) []*
 			}
 
 			feed.Labels.Put(model.LabelPodcastSource, podcastSource, false)
+			feed.Labels.Put(model.LabelContentOrigin, model.ContentOriginFull, false)
 		}(feed)
 	}
 	wg.Wait()
