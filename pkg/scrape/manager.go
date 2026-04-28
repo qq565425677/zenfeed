@@ -82,6 +82,12 @@ func (c *Config) From(app *config.App) {
 				RSSHubRoutePath: app.Scrape.Sources[i].RSS.RSSHubRoutePath,
 				RSSHubAccessKey: app.Scrape.RSSHubAccessKey,
 			}
+			if app.Scrape.Sources[i].RSS.Detail != nil {
+				c.Scrapers[i].RSS.Detail = &scraper.ScrapeSourceRSSDetail{
+					LinkRegex:               app.Scrape.Sources[i].RSS.Detail.LinkRegex,
+					RSSHubRoutePathTemplate: app.Scrape.Sources[i].RSS.Detail.RSSHubRoutePathTemplate,
+				}
+			}
 		}
 	}
 }

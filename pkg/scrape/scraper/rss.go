@@ -34,6 +34,12 @@ type ScrapeSourceRSS struct {
 	RSSHubEndpoint  string
 	RSSHubRoutePath string
 	RSSHubAccessKey string
+	Detail          *ScrapeSourceRSSDetail
+}
+
+type ScrapeSourceRSSDetail struct {
+	LinkRegex               string
+	RSSHubRoutePathTemplate string
 }
 
 func (c *ScrapeSourceRSS) Validate() error {
@@ -41,10 +47,15 @@ func (c *ScrapeSourceRSS) Validate() error {
 		return errors.New("URL or RSSHubEndpoint can not be empty at the same time")
 	}
 	if c.URL == "" {
-		c.URL = strings.TrimSuffix(c.RSSHubEndpoint, "/") + "/" + strings.TrimPrefix(c.RSSHubRoutePath, "/")
+		c.URL = c.buildRSSHubURL(c.RSSHubRoutePath)
 	}
 	if c.URL != "" && !strings.HasPrefix(c.URL, "http://") && !strings.HasPrefix(c.URL, "https://") {
 		return errors.New("URL must be a valid HTTP/HTTPS URL")
+	}
+	if c.Detail != nil {
+		if err := c.Detail.Validate(c.RSSHubEndpoint); err != nil {
+			return errors.Wrap(err, "invalid RSS detail config")
+		}
 	}
 
 	// Append access key as query parameter if provided
@@ -61,6 +72,19 @@ func (c *ScrapeSourceRSS) appendAccessKey() {
 			c.URL += "?key=" + c.RSSHubAccessKey
 		}
 	}
+}
+
+func (c *ScrapeSourceRSS) buildRSSHubURL(routePath string) string {
+	url := strings.TrimSuffix(c.RSSHubEndpoint, "/") + "/" + strings.TrimPrefix(routePath, "/")
+	if c.RSSHubAccessKey != "" && !strings.Contains(url, "key=") {
+		if strings.Contains(url, "?") {
+			url += "&key=" + c.RSSHubAccessKey
+		} else {
+			url += "?key=" + c.RSSHubAccessKey
+		}
+	}
+
+	return url
 }
 
 // --- Factory code block ---
@@ -108,10 +132,7 @@ func (r *rssReader) Read(ctx context.Context) ([]*model.Feed, error) {
 }
 
 func (r *rssReader) toResultFeed(now time.Time, feedFeed *gofeed.Item) (*model.Feed, error) {
-	content := r.combineContent(feedFeed.Content, feedFeed.Description)
-
-	// Ensure the content is markdown.
-	mdContent, err := textconvert.HTMLToMarkdown([]byte(content))
+	mdContent, err := rssItemMarkdownContent(feedFeed)
 	if err != nil {
 		return nil, errors.Wrapf(err, "converting content to markdown")
 	}
@@ -123,7 +144,7 @@ func (r *rssReader) toResultFeed(now time.Time, feedFeed *gofeed.Item) (*model.F
 			{Key: model.LabelTitle, Value: feedFeed.Title},
 			{Key: model.LabelLink, Value: feedFeed.Link},
 			{Key: model.LabelPubTime, Value: r.parseTime(feedFeed).Format(time.RFC3339)},
-			{Key: model.LabelContent, Value: string(mdContent)},
+			{Key: model.LabelContent, Value: mdContent},
 		},
 		Time: now,
 	}
@@ -143,6 +164,22 @@ func (r *rssReader) parseTime(feedFeed *gofeed.Item) time.Time {
 
 // combineContent combines Content and Description fields with proper formatting.
 func (r *rssReader) combineContent(content, description string) string {
+	return combineRSSContent(content, description)
+}
+
+func rssItemMarkdownContent(item *gofeed.Item) (string, error) {
+	content := combineRSSContent(item.Content, item.Description)
+
+	// Ensure the content is markdown.
+	mdContent, err := textconvert.HTMLToMarkdown([]byte(content))
+	if err != nil {
+		return "", errors.Wrap(err, "convert html to markdown")
+	}
+
+	return string(mdContent), nil
+}
+
+func combineRSSContent(content, description string) string {
 	switch {
 	case content == "":
 		return description

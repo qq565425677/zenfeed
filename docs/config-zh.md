@@ -82,6 +82,9 @@
 | :--------------------------------------- | :------- | :--------------------------------------------------------------------------------------------------------------------------------- | :----- | :---------------------------------------------- |
 | `scrape.sources[].rss.url`               | `string` | RSS Feed 的完整 URL。例如 `http://localhost:1200/github/trending/daily/any`。如果设置了 `rsshub_route_path` 则不能设置此项。       |        | 是 (除非设置了 `rsshub_route_path`)             |
 | `scrape.sources[].rss.rsshub_route_path` | `string` | RSSHub 路由路径。例如 `github/trending/daily/any`。将与 `scrape.rsshub_endpoint` 拼接成最终 URL。如果设置了 `url` 则不能设置此项。 |        | 是 (除非设置了 `url`, 且需要 `rsshub_endpoint`) |
+| `scrape.sources[].rss.detail` | `object` | 可选的详情 RSS 配置。配置后，Zenfeed 会在去重之后根据每条 feed 的 `link` 解析详情 RSSHub 路由，并把抓到的详情内容写入 `podcast_source`。 | `nil` | 否 |
+| `scrape.sources[].rss.detail.link_regex` | `string` | 用于从 feed `link` 中提取命名参数的正则表达式。命名捕获组可在 `rsshub_route_path_template` 中引用。 | | 是 (如果设置了 `detail`) |
+| `scrape.sources[].rss.detail.rsshub_route_path_template` | `string` | 详情 feed 的 RSSHub 路由模板。例如 `v2ex/post/{{ .postid }}` 或 `zhihu/question/{{ .questionId }}`。 | | 是 (如果设置了 `detail`) |
 
 ### 存储配置 (`storage`)
 

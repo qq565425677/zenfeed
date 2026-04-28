@@ -35,13 +35,14 @@ const (
 
 // LabelXXX is the metadata label for the feed.
 const (
-	LabelType    = "type"
-	LabelSource  = "source"
-	LabelTitle   = "title"
-	LabelLink    = "link"
-	LabelPubTime = "pub_time"
-	LabelContent = "content"
-	LabelPodcast = "podcast_url"
+	LabelType          = "type"
+	LabelSource        = "source"
+	LabelTitle         = "title"
+	LabelLink          = "link"
+	LabelPubTime       = "pub_time"
+	LabelContent       = "content"
+	LabelPodcastSource = "podcast_source"
+	LabelPodcast       = "podcast_url"
 )
 
 // Feed is core data model for a feed.

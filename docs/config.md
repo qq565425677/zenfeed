@@ -82,6 +82,9 @@ Describes each source to be scraped.
 | :--------------------------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :-------------------------------------------------------- |
 | `scrape.sources[].rss.url`               | `string` | Full URL of the RSS feed. E.g., `http://localhost:1200/github/trending/daily/any`. Cannot be set if `rsshub_route_path` is set.                                |               | Yes (unless `rsshub_route_path` is set)                   |
 | `scrape.sources[].rss.rsshub_route_path` | `string` | RSSHub route path. E.g., `github/trending/daily/any`. Will be concatenated with `scrape.rsshub_endpoint` to form the final URL. Cannot be set if `url` is set. |               | Yes (unless `url` is set, and requires `rsshub_endpoint`) |
+| `scrape.sources[].rss.detail` | `object` | Optional detail RSS configuration. When configured, Zenfeed resolves a detail RSSHub route from each item link after de-duplication and stores the fetched detail content in `podcast_source`. | `nil` | No |
+| `scrape.sources[].rss.detail.link_regex` | `string` | Regular expression used to extract named parameters from the feed `link`. Named capture groups can be referenced by `rsshub_route_path_template`. | | Yes (if `detail` is set) |
+| `scrape.sources[].rss.detail.rsshub_route_path_template` | `string` | RSSHub route path template for the detail feed. Example: `v2ex/post/{{ .postid }}` or `zhihu/question/{{ .questionId }}`. | | Yes (if `detail` is set) |
 
 ### Storage Configuration (`storage`)
 

@@ -71,6 +71,7 @@ storage:
 **关键配置项:**
 
 -   `source_label`: 包含文章全文的标签。
+    -   推荐使用 `podcast_source`。当 `scrape.sources[].rss.detail` 配置了详情 RSSHub 路由时，它会优先使用详情内容；否则会回退到原始 `content`。
 -   `label`: 用于存储最终播客对象 key 的新标签名称。
 -   `transform.to_podcast`: 播客转换的核心配置。
     -   `default`: 默认播客 profile，未命中 source-specific profile 时使用。
@@ -84,10 +85,19 @@ storage:
 **示例 `config.yaml`:**
 
 ```yaml
+scrape:
+  sources:
+    - name: V2EX
+      rss:
+        rsshub_route_path: v2ex/topics/hot
+        detail:
+          link_regex: '^https://www\.v2ex\.com/t/(?P<postid>\d+)'
+          rsshub_route_path_template: 'v2ex/post/{{ .postid }}'
+
 storage:
   feed:
     rewrites:
-      - source_label: content # 基于原文
+      - source_label: podcast_source # 优先详情内容，失败时回退到 content
         transform:
           to_podcast:
             llm: xxxx # 公共默认值，可被 default/profiles 继承

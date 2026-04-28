@@ -18,6 +18,8 @@ package scraper
 import (
 	"context"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/benbjohnson/clock"
@@ -110,6 +112,10 @@ func new(instance string, config *Config, dependencies Dependencies) (Scraper, e
 	if err != nil {
 		return nil, errors.Wrap(err, "creating source")
 	}
+	podcastSourceProvider, err := newRSSDetailPodcastSourceProvider(config.RSS)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating podcast source provider")
+	}
 
 	return &scraper{
 		Base: component.New(&component.BaseConfig[Config, Dependencies]{
@@ -118,7 +124,8 @@ func new(instance string, config *Config, dependencies Dependencies) (Scraper, e
 			Config:       config,
 			Dependencies: dependencies,
 		}),
-		source: source,
+		source:                source,
+		podcastSourceProvider: podcastSourceProvider,
 	}, nil
 }
 
@@ -127,7 +134,8 @@ func new(instance string, config *Config, dependencies Dependencies) (Scraper, e
 type scraper struct {
 	*component.Base[Config, Dependencies]
 
-	source reader
+	source                reader
+	podcastSourceProvider podcastSourceProvider
 }
 
 func (s *scraper) Run() (err error) {
@@ -168,7 +176,7 @@ func (s *scraper) scrapeUntilSuccess(ctx context.Context) {
 		log.Debug(opCtx, "reading source feeds success", "count", len(feeds))
 
 		// Process feeds.
-		processed := s.processFeeds(ctx, feeds)
+		processed := s.processFeeds(opCtx, feeds)
 		log.Debug(opCtx, "processed feeds", "count", len(processed))
 		if len(processed) == 0 {
 			return nil
@@ -193,6 +201,7 @@ func (s *scraper) processFeeds(ctx context.Context, feeds []*model.Feed) []*mode
 	feeds = s.addAdditionalMetaLabels(feeds)
 	feeds = s.fillIDs(feeds)
 	feeds = s.filterExists(ctx, feeds)
+	feeds = s.addPodcastSource(ctx, feeds)
 
 	return feeds
 }
@@ -277,6 +286,46 @@ func (s *scraper) addAdditionalMetaLabels(feeds []*model.Feed) []*model.Feed {
 			feed.Labels,
 			append(s.Config().Labels, model.Label{Key: model.LabelSource, Value: s.Config().Name})...,
 		)
+		feed.Labels.EnsureSorted()
+	}
+
+	return feeds
+}
+
+func (s *scraper) addPodcastSource(ctx context.Context, feeds []*model.Feed) []*model.Feed {
+	for _, feed := range feeds {
+		feed.Labels.Put(model.LabelPodcastSource, feed.Labels.Get(model.LabelContent), false)
+	}
+	if s.podcastSourceProvider == nil || len(feeds) == 0 {
+		for _, feed := range feeds {
+			feed.Labels.EnsureSorted()
+		}
+
+		return feeds
+	}
+
+	var wg sync.WaitGroup
+	for _, feed := range feeds {
+		wg.Add(1)
+		go func(feed *model.Feed) {
+			defer wg.Done()
+
+			podcastSource, ok, err := s.podcastSourceProvider.Resolve(ctx, feed.Labels)
+			if err != nil {
+				log.Warn(ctx, errors.Wrapf(err, "populate podcast source for link %s", feed.Labels.Get(model.LabelLink)))
+
+				return
+			}
+			if !ok || strings.TrimSpace(podcastSource) == "" {
+				return
+			}
+
+			feed.Labels.Put(model.LabelPodcastSource, podcastSource, false)
+		}(feed)
+	}
+	wg.Wait()
+
+	for _, feed := range feeds {
 		feed.Labels.EnsureSorted()
 	}
 
