@@ -9,7 +9,7 @@ Zenfeed 的播客功能可以将任何文章源自动转换为一场引人入胜
 3.  **语音合成**: 根据 `tts_provider` 调用对应 TTS 后端（`gemini` 或 `edge`）将脚本转换为语音。
 4.  **音频合并**: 将所有语音片段合成为一个完整的 WAV 音频文件。
 5.  **上传存储**: 将生成的播客文件上传到您配置的 S3 兼容对象存储中。
-6.  **保存链接**: 最后，将播客文件的公开访问 URL 保存为一个新的 Feed 标签，方便您在通知、API 或其他地方使用。
+6.  **保存链接**: 最后，将播客文件的对象 key 保存为一个新的 Feed 标签。在 API / RSS 返回时，后端会动态生成带有效期的签名播放链接。
 
 ## 配置步骤
 
@@ -50,7 +50,7 @@ llms:
 -   `endpoint`: 您的 R2 API 端点。通常格式为 `<account_id>.r2.cloudflarestorage.com`。您可以在 R2 存储桶的主页找到它。
 -   `access_key_id` 和 `secret_access_key`: R2 API 令牌。您可以在 "R2" -> "管理 R2 API 令牌" 页面创建。
 -   `bucket`: 您创建的存储桶的名称。
--   `bucket_url`: 存储桶的公开访问 URL。要获取此 URL，您需要将存储桶连接到一个自定义域，或者使用 R2 提供的 `r2.dev` 公开访问地址。
+-   `signed_url_expire`（可选）：动态签名 URL 的有效期，例如 `15m`、`1h`。默认 `1h`。
 
 **示例 `config.yaml`:**
 
@@ -61,7 +61,7 @@ storage:
     access_key_id: "..."
     secret_access_key: "..."
     bucket: "zenfeed-podcasts"
-    bucket_url: "https://pub-xxxxxxxx.r2.dev"
+    signed_url_expire: 15m
 ```
 
 ### 3. 配置重写规则
@@ -71,7 +71,7 @@ storage:
 **关键配置项:**
 
 -   `source_label`: 包含文章全文的标签。
--   `label`: 用于存储最终播客 URL 的新标签名称。
+-   `label`: 用于存储最终播客对象 key 的新标签名称。
 -   `transform.to_podcast`: 播客转换的核心配置。
     -   `llm`: 用于生成脚本的 LLM 名称（来自 `llms` 配置）。
     -   `tts_provider`: TTS 提供商，支持 `gemini` 或 `edge`。
@@ -107,4 +107,4 @@ storage:
         label: podcast_url
 ```
 
-配置完成后，Zenfeed 将在每次抓取到新文章时，自动执行上述流程。可以在通知模版中使用 podcast_url label，或 Web 中直接收听（Web 固定读取 podcast_url label，若使用别的名称则无法读取）
+配置完成后，Zenfeed 将在每次抓取到新文章时自动执行上述流程。Web（固定读取 `podcast_url`）和 RSS/API 查询结果会返回带有效期的签名音频链接；若使用其他 label 名称，Web 将无法直接识别。

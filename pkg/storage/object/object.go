@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -36,21 +37,23 @@ import (
 type Storage interface {
 	component.Component
 	config.Watcher
-	Put(ctx context.Context, key string, body io.Reader, contentType string) (url string, err error)
-	Get(ctx context.Context, key string) (url string, err error)
+	Put(ctx context.Context, key string, body io.Reader, contentType string) (storedKey string, err error)
+	Get(ctx context.Context, key string) (storedKey string, err error)
+	SignGet(ctx context.Context, key string) (signedURL string, err error)
 }
 
 var ErrNotFound = errors.New("not found")
+
+const defaultSignedURLExpire = time.Hour
 
 type Config struct {
 	Endpoint        string
 	AccessKeyID     string
 	SecretAccessKey string
+	SignedURLExpire time.Duration
 	client          *minio.Client
 
-	Bucket    string
-	BucketURL string
-	bucketURL *url.URL
+	Bucket string
 }
 
 func (c *Config) Validate() error {
@@ -61,8 +64,16 @@ func (c *Config) Validate() error {
 	if c.Endpoint == "" {
 		return errors.New("endpoint is required")
 	}
-	c.Endpoint = strings.TrimPrefix(c.Endpoint, "https://") // S3 endpoint should not have https:// prefix.
-	c.Endpoint = strings.TrimPrefix(c.Endpoint, "http://")
+	endpoint := strings.TrimSpace(c.Endpoint)
+	secure := true
+	if strings.HasPrefix(endpoint, "https://") {
+		endpoint = strings.TrimPrefix(endpoint, "https://")
+		secure = true
+	} else if strings.HasPrefix(endpoint, "http://") {
+		endpoint = strings.TrimPrefix(endpoint, "http://")
+		secure = false
+	}
+	c.Endpoint = endpoint
 
 	if c.AccessKeyID == "" {
 		return errors.New("access key id is required")
@@ -72,7 +83,7 @@ func (c *Config) Validate() error {
 	}
 	client, err := minio.New(c.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(c.AccessKeyID, c.SecretAccessKey, ""),
-		Secure: true,
+		Secure: secure,
 	})
 	if err != nil {
 		return errors.Wrap(err, "new minio client")
@@ -82,14 +93,9 @@ func (c *Config) Validate() error {
 	if c.Bucket == "" {
 		return errors.New("bucket is required")
 	}
-	if c.BucketURL == "" {
-		return errors.New("bucket url is required")
+	if c.SignedURLExpire <= 0 {
+		c.SignedURLExpire = defaultSignedURLExpire
 	}
-	u, err := url.Parse(c.BucketURL)
-	if err != nil {
-		return errors.Wrap(err, "parse public url")
-	}
-	c.bucketURL = u
 
 	return nil
 }
@@ -99,15 +105,15 @@ func (c *Config) From(app *config.App) *Config {
 		Endpoint:        app.Storage.Object.Endpoint,
 		AccessKeyID:     app.Storage.Object.AccessKeyID,
 		SecretAccessKey: app.Storage.Object.SecretAccessKey,
+		SignedURLExpire: time.Duration(app.Storage.Object.SignedURLExpire),
 		Bucket:          app.Storage.Object.Bucket,
-		BucketURL:       app.Storage.Object.BucketURL,
 	}
 
 	return c
 }
 
 func (c *Config) Empty() bool {
-	return c.Endpoint == "" && c.AccessKeyID == "" && c.SecretAccessKey == "" && c.Bucket == "" && c.BucketURL == ""
+	return c.Endpoint == "" && c.AccessKeyID == "" && c.SecretAccessKey == "" && c.Bucket == ""
 }
 
 type Dependencies struct{}
@@ -152,7 +158,7 @@ type s3 struct {
 	*component.Base[Config, Dependencies]
 }
 
-func (s *s3) Put(ctx context.Context, key string, body io.Reader, contentType string) (publicURL string, err error) {
+func (s *s3) Put(ctx context.Context, key string, body io.Reader, contentType string) (storedKey string, err error) {
 	ctx = telemetry.StartWith(ctx, append(s.TelemetryLabels(), telemetrymodel.KeyOperation, "Put")...)
 	defer func() { telemetry.End(ctx, err) }()
 	config := s.Config()
@@ -166,10 +172,10 @@ func (s *s3) Put(ctx context.Context, key string, body io.Reader, contentType st
 		return "", errors.Wrap(err, "put object")
 	}
 
-	return config.bucketURL.JoinPath(key).String(), nil
+	return key, nil
 }
 
-func (s *s3) Get(ctx context.Context, key string) (publicURL string, err error) {
+func (s *s3) Get(ctx context.Context, key string) (storedKey string, err error) {
 	ctx = telemetry.StartWith(ctx, append(s.TelemetryLabels(), telemetrymodel.KeyOperation, "Get")...)
 	defer func() { telemetry.End(ctx, err) }()
 	config := s.Config()
@@ -186,7 +192,26 @@ func (s *s3) Get(ctx context.Context, key string) (publicURL string, err error) 
 		return "", errors.Wrap(err, "stat object")
 	}
 
-	return config.bucketURL.JoinPath(key).String(), nil
+	return key, nil
+}
+
+func (s *s3) SignGet(ctx context.Context, key string) (signedURL string, err error) {
+	ctx = telemetry.StartWith(ctx, append(s.TelemetryLabels(), telemetrymodel.KeyOperation, "SignGet")...)
+	defer func() { telemetry.End(ctx, err) }()
+	config := s.Config()
+	if config.Empty() {
+		return "", errors.New("not configured")
+	}
+	if strings.TrimSpace(key) == "" {
+		return "", errors.New("key is required")
+	}
+
+	u, err := config.client.PresignedGetObject(ctx, config.Bucket, key, config.SignedURLExpire, url.Values{})
+	if err != nil {
+		return "", errors.Wrap(err, "presign get object")
+	}
+
+	return u.String(), nil
 }
 
 func (s *s3) Reload(app *config.App) (err error) {
@@ -217,6 +242,12 @@ func (m *mockStorage) Put(ctx context.Context, key string, body io.Reader, conte
 }
 
 func (m *mockStorage) Get(ctx context.Context, key string) (string, error) {
+	args := m.Called(ctx, key)
+
+	return args.String(0), args.Error(1)
+}
+
+func (m *mockStorage) SignGet(ctx context.Context, key string) (string, error) {
 	args := m.Called(ctx, key)
 
 	return args.String(0), args.Error(1)

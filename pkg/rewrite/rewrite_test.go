@@ -251,7 +251,7 @@ func TestLabels(t *testing.T) {
 				},
 				objectStorageMock: func(m *mock.Mock) {
 					m.On("Put", mock.Anything, mock.AnythingOfType("string"), mock.Anything, "audio/wav").
-						Return("http://storage.example.com/podcast.wav", nil).Once()
+						Return("podcasts/test.wav", nil).Once()
 					m.On("Get", mock.Anything, mock.AnythingOfType("string")).Return("", object.ErrNotFound).Once()
 				},
 			},
@@ -263,7 +263,7 @@ func TestLabels(t *testing.T) {
 			ThenExpected: thenExpected{
 				outputLabels: model.Labels{
 					{Key: model.LabelContent, Value: "This is a long article to be converted into a podcast."},
-					{Key: "podcast_url", Value: "http://storage.example.com/podcast.wav"},
+					{Key: "podcast_url", Value: "podcasts/test.wav"},
 				},
 				isErr: false,
 			},

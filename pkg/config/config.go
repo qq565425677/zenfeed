@@ -120,11 +120,11 @@ type FeedStorage struct {
 }
 
 type ObjectStorage struct {
-	Endpoint        string `yaml:"endpoint,omitempty" json:"endpoint,omitempty" desc:"The endpoint of the object storage."`
-	AccessKeyID     string `yaml:"access_key_id,omitempty" json:"access_key_id,omitempty" desc:"The access key id of the object storage."`
-	SecretAccessKey string `yaml:"secret_access_key,omitempty" json:"secret_access_key,omitempty" desc:"The secret access key of the object storage."`
-	Bucket          string `yaml:"bucket,omitempty" json:"bucket,omitempty" desc:"The bucket of the object storage."`
-	BucketURL       string `yaml:"bucket_url,omitempty" json:"bucket_url,omitempty" desc:"The public URL of the object storage bucket."`
+	Endpoint        string            `yaml:"endpoint,omitempty" json:"endpoint,omitempty" desc:"The endpoint of the object storage."`
+	AccessKeyID     string            `yaml:"access_key_id,omitempty" json:"access_key_id,omitempty" desc:"The access key id of the object storage."`
+	SecretAccessKey string            `yaml:"secret_access_key,omitempty" json:"secret_access_key,omitempty" desc:"The secret access key of the object storage."`
+	Bucket          string            `yaml:"bucket,omitempty" json:"bucket,omitempty" desc:"The bucket of the object storage."`
+	SignedURLExpire timeutil.Duration `yaml:"signed_url_expire,omitempty" json:"signed_url_expire,omitempty" desc:"The expiration duration for generated signed object URLs. Default: 1h."`
 }
 
 type ScrapeSource struct {

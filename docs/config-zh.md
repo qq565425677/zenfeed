@@ -109,7 +109,7 @@
 | `storage.object.access_key_id`     | `string` | 对象存储的 Access Key ID。     |        | 是 (如果使用播客功能) |
 | `storage.object.secret_access_key` | `string` | 对象存储的 Secret Access Key。 |        | 是 (如果使用播客功能) |
 | `storage.object.bucket`            | `string` | 对象存储的存储桶名称。         |        | 是 (如果使用播客功能) |
-| `storage.object.bucket_url`        | `string` | 对象存储的桶访问 URL。       |        | 否                    |
+| `storage.object.signed_url_expire` | `time.Duration` | 动态签名 URL 的有效期（用于 API/RSS 返回时签名）。 | `1h` | 否 |
 
 ### 重写规则配置 (`storage.feed.rewrites[]`)
 

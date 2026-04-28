@@ -34,7 +34,9 @@ import (
 	"github.com/glidea/zenfeed/pkg/model"
 	"github.com/glidea/zenfeed/pkg/storage/feed"
 	"github.com/glidea/zenfeed/pkg/storage/feed/block"
+	"github.com/glidea/zenfeed/pkg/storage/object"
 	telemetry "github.com/glidea/zenfeed/pkg/telemetry"
+	"github.com/glidea/zenfeed/pkg/telemetry/log"
 	telemetrymodel "github.com/glidea/zenfeed/pkg/telemetry/model"
 	jsonschema "github.com/glidea/zenfeed/pkg/util/json_schema"
 )
@@ -86,6 +88,7 @@ func (c *Config) From(app *config.App) *Config {
 type Dependencies struct {
 	ConfigManager config.Manager
 	FeedStorage   feed.Storage
+	ObjectStorage object.Storage
 	LLMFactory    llm.Factory
 }
 
@@ -512,6 +515,7 @@ func (a *api) Query(ctx context.Context, req *QueryRequest) (resp *QueryResponse
 
 	// Convert to response.
 	for _, feed := range feeds {
+		a.signPodcastURL(ctx, feed.Labels)
 		feed.Time = feed.Time.In(time.Local)
 	}
 
@@ -520,6 +524,30 @@ func (a *api) Query(ctx context.Context, req *QueryRequest) (resp *QueryResponse
 		Feeds:   feeds,
 		Count:   len(feeds),
 	}, nil
+}
+
+func (a *api) signPodcastURL(ctx context.Context, labels model.Labels) {
+	if a.Dependencies().ObjectStorage == nil {
+		return
+	}
+
+	for i := range labels {
+		if labels[i].Key != model.LabelPodcast {
+			continue
+		}
+		objectKey := strings.TrimSpace(labels[i].Value)
+		if objectKey == "" {
+			continue
+		}
+
+		signedURL, err := a.Dependencies().ObjectStorage.SignGet(ctx, objectKey)
+		if err != nil {
+			log.Warn(ctx, errors.Wrapf(err, "sign podcast url for key %s", objectKey))
+
+			continue
+		}
+		labels[i].Value = signedURL
+	}
 }
 
 type mockAPI struct {

@@ -315,6 +315,7 @@ func (a *App) setupAPI() (err error) {
 	a.api, err = api.NewFactory().New(component.Global, a.conf, api.Dependencies{
 		ConfigManager: a.configMgr,
 		FeedStorage:   a.feedStorage,
+		ObjectStorage: a.objectStorage,
 		LLMFactory:    a.llmFactory,
 	})
 	if err != nil {

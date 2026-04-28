@@ -109,7 +109,7 @@ Describes each source to be scraped.
 | `storage.object.access_key_id`     | `string` | The access key id of the object storage.     |               | Yes (if using podcast feature) |
 | `storage.object.secret_access_key` | `string` | The secret access key of the object storage. |               | Yes (if using podcast feature) |
 | `storage.object.bucket`            | `string` | The bucket of the object storage.            |               | Yes (if using podcast feature) |
-| `storage.object.bucket`        | `string` | The URL of the object storage bucket.        |               | No                             |
+| `storage.object.signed_url_expire` | `time.Duration` | Expiration for generated signed URLs (used in API/RSS response rendering). | `1h` | No |
 
 ### Rewrite Rule Configuration (`storage.feed.rewrites[]`)
 
