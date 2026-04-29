@@ -138,12 +138,22 @@ type ScrapeSource struct {
 type ScrapeSourceRSS struct {
 	URL             string                 `yaml:"url,omitempty" json:"url,omitempty" desc:"The URL of the RSS feed. e.g. http://localhost:1200/github/trending/daily/any. You can not set it when rsshub_route_path is set."`
 	RSSHubRoutePath string                 `yaml:"rsshub_route_path,omitempty" json:"rsshub_route_path,omitempty" desc:"The RSSHub route path of the RSS feed. e.g. github/trending/daily/any. It will be joined with the rsshub_endpoint as the final URL."`
-	Detail          *ScrapeSourceRSSDetail `yaml:"detail,omitempty" json:"detail,omitempty" desc:"Optional detail RSS config. When set, Zenfeed resolves a detail RSSHub route from each feed link and stores the fetched detail content into the podcast_source label."`
+	Detail          *ScrapeSourceRSSDetail `yaml:"detail,omitempty" json:"detail,omitempty" desc:"Optional detail content config. When set, Zenfeed resolves a detail source from each feed link after de-duplication and stores the fetched detail content into the podcast_source label. Exactly one of detail.rss or detail.crawl must be configured."`
 }
 
 type ScrapeSourceRSSDetail struct {
-	LinkRegex               string `yaml:"link_regex,omitempty" json:"link_regex,omitempty" desc:"Regular expression used to extract named parameters from the feed link. Named capture groups can be referenced by rsshub_route_path_template. Example: ^https://www\\\\.v2ex\\\\.com/t/(?P<postid>\\\\d+)"`
+	LinkRegex string                      `yaml:"link_regex,omitempty" json:"link_regex,omitempty" desc:"Optional regular expression used to match the feed link and extract named parameters for detail resolution. It is required when detail.rss is set. For detail.crawl, if omitted, Zenfeed crawls the original feed link directly. Named capture groups can be referenced by detail.rss.rsshub_route_path_template or detail.crawl.url_template. Example: ^https://www\\\\.v2ex\\\\.com/t/(?P<postid>\\\\d+)"`
+	RSS       *ScrapeSourceRSSDetailRSS   `yaml:"rss,omitempty" json:"rss,omitempty" desc:"RSS detail config. Mutually exclusive with detail.crawl."`
+	Crawl     *ScrapeSourceRSSDetailCrawl `yaml:"crawl,omitempty" json:"crawl,omitempty" desc:"Crawl detail config. Mutually exclusive with detail.rss."`
+}
+
+type ScrapeSourceRSSDetailRSS struct {
 	RSSHubRoutePathTemplate string `yaml:"rsshub_route_path_template,omitempty" json:"rsshub_route_path_template,omitempty" desc:"RSSHub route path template for the detail feed. It is rendered with the named capture groups from link_regex. Example: v2ex/post/{{ .postid }}"`
+}
+
+type ScrapeSourceRSSDetailCrawl struct {
+	Type        string `yaml:"type,omitempty" json:"type,omitempty" desc:"The crawl type for detail content. Supported values: crawl, crawl_by_jina. Default: crawl."`
+	URLTemplate string `yaml:"url_template,omitempty" json:"url_template,omitempty" desc:"Optional URL template for crawl detail. If omitted, the original feed link is crawled directly after link_regex matches. Named capture groups from link_regex can be referenced here."`
 }
 
 type RewriteRule struct {

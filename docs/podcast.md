@@ -71,7 +71,7 @@ storage:
 **关键配置项:**
 
 -   `source_label`: 包含文章全文的标签。
-    -   推荐使用 `podcast_source`。当 `scrape.sources[].rss.detail` 配置了详情 RSSHub 路由时，它会优先使用详情内容；否则会回退到原始 `content`。
+    -   推荐使用 `podcast_source`。当 `scrape.sources[].rss.detail` 配置了详情来源（RSSHub 或 crawl）时，它会优先使用详情内容；否则会回退到原始 `content`。
 -   `label`: 用于存储最终播客对象 key 的新标签名称。
 -   `transform.to_podcast`: 播客转换的核心配置。
     -   `default`: 默认播客 profile，未命中 source-specific profile 时使用。
@@ -92,7 +92,14 @@ scrape:
         rsshub_route_path: v2ex/topics/hot
         detail:
           link_regex: '^https://www\.v2ex\.com/t/(?P<postid>\d+)'
-          rsshub_route_path_template: 'v2ex/post/{{ .postid }}'
+          rss:
+            rsshub_route_path_template: 'v2ex/post/{{ .postid }}'
+    - name: GitHub Trending
+      rss:
+        rsshub_route_path: github/trending/daily/any
+        detail:
+          crawl:
+            type: crawl_by_jina # 或 crawl；省略 url_template 时直接抓取原始 repo 链接
 
 storage:
   feed:

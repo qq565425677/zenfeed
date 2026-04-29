@@ -83,9 +83,13 @@
 | :--------------------------------------- | :------- | :--------------------------------------------------------------------------------------------------------------------------------- | :----- | :---------------------------------------------- |
 | `scrape.sources[].rss.url`               | `string` | RSS Feed 的完整 URL。例如 `http://localhost:1200/github/trending/daily/any`。如果设置了 `rsshub_route_path` 则不能设置此项。       |        | 是 (除非设置了 `rsshub_route_path`)             |
 | `scrape.sources[].rss.rsshub_route_path` | `string` | RSSHub 路由路径。例如 `github/trending/daily/any`。将与 `scrape.rsshub_endpoint` 拼接成最终 URL。如果设置了 `url` 则不能设置此项。 |        | 是 (除非设置了 `url`, 且需要 `rsshub_endpoint`) |
-| `scrape.sources[].rss.detail` | `object` | 可选的详情 RSS 配置。配置后，Zenfeed 会在去重之后根据每条 feed 的 `link` 解析详情 RSSHub 路由，并把抓到的详情内容写入 `podcast_source`。 | `nil` | 否 |
-| `scrape.sources[].rss.detail.link_regex` | `string` | 用于从 feed `link` 中提取命名参数的正则表达式。命名捕获组可在 `rsshub_route_path_template` 中引用。 | | 是 (如果设置了 `detail`) |
-| `scrape.sources[].rss.detail.rsshub_route_path_template` | `string` | 详情 feed 的 RSSHub 路由模板。例如 `v2ex/post/{{ .postid }}` 或 `zhihu/question/{{ .questionId }}`。 | | 是 (如果设置了 `detail`) |
+| `scrape.sources[].rss.detail` | `object` | 可选的详情内容配置。配置后，Zenfeed 会在去重之后根据每条 feed 的 `link` 解析详情来源，并把抓到的详情内容写入 `podcast_source`。`detail.rss` 与 `detail.crawl` 必须二选一。 | `nil` | 否 |
+| `scrape.sources[].rss.detail.link_regex` | `string` | 可选的正则表达式，用于匹配 feed `link` 并提取命名参数。命名捕获组可在 `detail.rss.rsshub_route_path_template` 或 `detail.crawl.url_template` 中引用。设置 `detail.rss` 时必填；设置 `detail.crawl` 时可省略，省略后直接抓取原始 `link`。 | | 是 (如果设置了 `detail.rss`) |
+| `scrape.sources[].rss.detail.rss` | `object` | 通过 RSSHub 获取详情内容的配置。与 `detail.crawl` 互斥。 | `nil` | 是 (如果未设置 `detail.crawl`) |
+| `scrape.sources[].rss.detail.rss.rsshub_route_path_template` | `string` | 详情 feed 的 RSSHub 路由模板。例如 `v2ex/post/{{ .postid }}` 或 `zhihu/question/{{ .questionId }}`。 | | 是 (如果设置了 `detail.rss`) |
+| `scrape.sources[].rss.detail.crawl` | `object` | 通过网页抓取获取详情内容的配置。与 `detail.rss` 互斥。 | `nil` | 是 (如果未设置 `detail.rss`) |
+| `scrape.sources[].rss.detail.crawl.type` | `string` | 抓取类型。支持 `crawl`（本地抓取，默认）和 `crawl_by_jina`（通过 Jina Reader 抓取）。 | `crawl` | 否 |
+| `scrape.sources[].rss.detail.crawl.url_template` | `string` | 可选的抓取 URL 模板。若省略，则直接抓取原始 feed `link`。可引用 `link_regex` 的命名捕获组；若未设置 `link_regex`，则仅可使用内置变量 `{{ .link }}`。 | | 否 |
 
 ### 存储配置 (`storage`)
 

@@ -34,12 +34,23 @@ type ScrapeSourceRSS struct {
 	RSSHubEndpoint  string
 	RSSHubRoutePath string
 	RSSHubAccessKey string
+	JinaToken       string
 	Detail          *ScrapeSourceRSSDetail
 }
 
 type ScrapeSourceRSSDetail struct {
-	LinkRegex               string
+	LinkRegex string
+	RSS       *ScrapeSourceRSSDetailRSS
+	Crawl     *ScrapeSourceRSSDetailCrawl
+}
+
+type ScrapeSourceRSSDetailRSS struct {
 	RSSHubRoutePathTemplate string
+}
+
+type ScrapeSourceRSSDetailCrawl struct {
+	Type        string
+	URLTemplate string
 }
 
 func (c *ScrapeSourceRSS) Validate() error {

@@ -11,41 +11,154 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/glidea/zenfeed/pkg/model"
+	"github.com/glidea/zenfeed/pkg/util/crawl"
 	textconvert "github.com/glidea/zenfeed/pkg/util/text_convert"
 )
 
+const (
+	detailCrawlTypeLocal = "crawl"
+	detailCrawlTypeJina  = "crawl_by_jina"
+)
+
 func (c *ScrapeSourceRSSDetail) Validate(rsshubEndpoint string) error {
-	if c.LinkRegex == "" {
-		return errors.New("detail link regex is required")
+	hasRSS := c.RSS != nil
+	hasCrawl := c.Crawl != nil
+	switch {
+	case hasRSS && hasCrawl:
+		return errors.New("detail rss and detail crawl cannot be set at the same time")
+	case !hasRSS && !hasCrawl:
+		return errors.New("detail rss or detail crawl config is required")
 	}
-	if _, err := regexp.Compile(c.LinkRegex); err != nil {
-		return errors.Wrap(err, "compile detail link regex")
+
+	if hasRSS {
+		if c.LinkRegex == "" {
+			return errors.New("detail link regex is required when RSS detail is set")
+		}
+		if _, err := regexp.Compile(c.LinkRegex); err != nil {
+			return errors.Wrap(err, "compile detail link regex")
+		}
+		if c.RSS.RSSHubRoutePathTemplate == "" {
+			return errors.New("detail RSSHub route path template is required")
+		}
+		if rsshubEndpoint == "" {
+			return errors.New("RSSHubEndpoint is required when RSS detail is set")
+		}
+		if _, err := texttemplate.New("").Option("missingkey=error").Parse(c.RSS.RSSHubRoutePathTemplate); err != nil {
+			return errors.Wrap(err, "parse detail RSSHub route path template")
+		}
 	}
-	if c.RSSHubRoutePathTemplate == "" {
-		return errors.New("detail RSSHub route path template is required")
-	}
-	if rsshubEndpoint == "" {
-		return errors.New("RSSHubEndpoint is required when RSS detail is set")
-	}
-	if _, err := texttemplate.New("").Option("missingkey=error").Parse(c.RSSHubRoutePathTemplate); err != nil {
-		return errors.Wrap(err, "parse detail RSSHub route path template")
+
+	if hasCrawl {
+		if strings.TrimSpace(c.LinkRegex) != "" {
+			if _, err := regexp.Compile(c.LinkRegex); err != nil {
+				return errors.Wrap(err, "compile detail link regex")
+			}
+		}
+		if err := c.Crawl.Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+func (c *ScrapeSourceRSSDetailCrawl) Validate() error {
+	switch c.normalizedType() {
+	case detailCrawlTypeLocal, detailCrawlTypeJina:
+	default:
+		return errors.Errorf("detail crawl type must be %q or %q", detailCrawlTypeLocal, detailCrawlTypeJina)
+	}
+
+	if strings.TrimSpace(c.URLTemplate) == "" {
+		return nil
+	}
+	if _, err := texttemplate.New("").Option("missingkey=error").Parse(c.URLTemplate); err != nil {
+		return errors.Wrap(err, "parse detail crawl url template")
+	}
+
+	return nil
+}
+
+func (c *ScrapeSourceRSSDetailCrawl) normalizedType() string {
+	if c == nil || strings.TrimSpace(c.Type) == "" {
+		return detailCrawlTypeLocal
+	}
+
+	return strings.TrimSpace(c.Type)
 }
 
 type podcastSourceProvider interface {
 	Resolve(ctx context.Context, labels model.Labels) (string, bool, error)
 }
 
+type detailLinkProvider struct {
+	linkRE *regexp.Regexp
+}
+
+func newDetailLinkProvider(pattern string) (*detailLinkProvider, error) {
+	if strings.TrimSpace(pattern) == "" {
+		return &detailLinkProvider{}, nil
+	}
+
+	linkRE, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, errors.Wrap(err, "compile detail link regex")
+	}
+
+	return &detailLinkProvider{linkRE: linkRE}, nil
+}
+
+func (p *detailLinkProvider) templateData(link string) (map[string]string, bool) {
+	data := map[string]string{
+		"link": link,
+	}
+
+	if p.linkRE == nil {
+		return data, true
+	}
+
+	matches := p.linkRE.FindStringSubmatch(link)
+	if matches == nil {
+		return nil, false
+	}
+	for i, name := range p.linkRE.SubexpNames() {
+		if i == 0 || name == "" {
+			continue
+		}
+		data[name] = matches[i]
+	}
+
+	return data, true
+}
+
+func (p *detailLinkProvider) render(link string, tmpl *texttemplate.Template) (string, bool, error) {
+	data, ok := p.templateData(link)
+	if !ok {
+		return "", false, nil
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", false, errors.Wrap(err, "render detail template")
+	}
+
+	return strings.TrimSpace(buf.String()), true, nil
+}
+
 type rssDetailPodcastSourceProvider struct {
 	config        *ScrapeSourceRSS
-	linkRE        *regexp.Regexp
+	linkProvider  *detailLinkProvider
 	routeTemplate *texttemplate.Template
 	parser        *gofeed.Parser
 }
 
-func newRSSDetailPodcastSourceProvider(config *ScrapeSourceRSS) (podcastSourceProvider, error) {
+type crawlDetailPodcastSourceProvider struct {
+	linkProvider *detailLinkProvider
+	urlTemplate  *texttemplate.Template
+	crawler      crawl.Crawler
+}
+
+func newDetailPodcastSourceProvider(config *ScrapeSourceRSS) (podcastSourceProvider, error) {
 	if config == nil || config.Detail == nil {
 		return nil, nil
 	}
@@ -53,20 +166,60 @@ func newRSSDetailPodcastSourceProvider(config *ScrapeSourceRSS) (podcastSourcePr
 		return nil, err
 	}
 
-	linkRE, err := regexp.Compile(config.Detail.LinkRegex)
+	if config.Detail.RSS != nil {
+		return newRSSDetailPodcastSourceProvider(config, config.Detail.RSS)
+	}
+	if config.Detail.Crawl != nil {
+		return newCrawlDetailPodcastSourceProvider(config, config.Detail.Crawl)
+	}
+
+	return nil, nil
+}
+
+func newRSSDetailPodcastSourceProvider(config *ScrapeSourceRSS, detail *ScrapeSourceRSSDetailRSS) (podcastSourceProvider, error) {
+	linkProvider, err := newDetailLinkProvider(config.Detail.LinkRegex)
 	if err != nil {
 		return nil, errors.Wrap(err, "compile detail link regex")
 	}
-	routeTemplate, err := texttemplate.New("").Option("missingkey=error").Parse(config.Detail.RSSHubRoutePathTemplate)
+	routeTemplate, err := texttemplate.New("").Option("missingkey=error").Parse(detail.RSSHubRoutePathTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse detail RSSHub route path template")
 	}
 
 	return &rssDetailPodcastSourceProvider{
 		config:        config,
-		linkRE:        linkRE,
+		linkProvider:  linkProvider,
 		routeTemplate: routeTemplate,
 		parser:        gofeed.NewParser(),
+	}, nil
+}
+
+func newCrawlDetailPodcastSourceProvider(config *ScrapeSourceRSS, detail *ScrapeSourceRSSDetailCrawl) (podcastSourceProvider, error) {
+	linkProvider, err := newDetailLinkProvider(config.Detail.LinkRegex)
+	if err != nil {
+		return nil, errors.Wrap(err, "compile detail link regex")
+	}
+
+	var urlTemplate *texttemplate.Template
+	if strings.TrimSpace(detail.URLTemplate) != "" {
+		urlTemplate, err = texttemplate.New("").Option("missingkey=error").Parse(detail.URLTemplate)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse detail crawl url template")
+		}
+	}
+
+	var crawlerImpl crawl.Crawler
+	switch detail.normalizedType() {
+	case detailCrawlTypeJina:
+		crawlerImpl = crawl.NewJina(config.JinaToken)
+	default:
+		crawlerImpl = crawl.NewLocal()
+	}
+
+	return &crawlDetailPodcastSourceProvider{
+		linkProvider: linkProvider,
+		urlTemplate:  urlTemplate,
+		crawler:      crawlerImpl,
 	}, nil
 }
 
@@ -102,27 +255,56 @@ func (p *rssDetailPodcastSourceProvider) Resolve(ctx context.Context, labels mod
 }
 
 func (p *rssDetailPodcastSourceProvider) resolveRoutePath(link string) (string, bool, error) {
-	matches := p.linkRE.FindStringSubmatch(link)
-	if matches == nil {
-		return "", false, nil
-	}
-
-	data := map[string]string{
-		"link": link,
-	}
-	for i, name := range p.linkRE.SubexpNames() {
-		if i == 0 || name == "" {
-			continue
-		}
-		data[name] = matches[i]
-	}
-
-	var buf bytes.Buffer
-	if err := p.routeTemplate.Execute(&buf, data); err != nil {
+	routePath, ok, err := p.linkProvider.render(link, p.routeTemplate)
+	if err != nil {
 		return "", false, errors.Wrap(err, "render detail RSSHub route path template")
 	}
 
-	return strings.TrimSpace(buf.String()), true, nil
+	return routePath, ok, nil
+}
+
+func (p *crawlDetailPodcastSourceProvider) Resolve(ctx context.Context, labels model.Labels) (string, bool, error) {
+	link := labels.Get(model.LabelLink)
+	if link == "" {
+		return "", false, nil
+	}
+
+	targetURL, ok, err := p.resolveURL(link)
+	if err != nil {
+		return "", false, errors.Wrapf(err, "resolve detail crawl url for link %s", link)
+	}
+	if !ok {
+		return "", false, nil
+	}
+
+	mdBytes, err := p.crawler.Markdown(ctx, targetURL)
+	if err != nil {
+		return "", false, errors.Wrapf(err, "crawl detail url %s", targetURL)
+	}
+
+	content := strings.TrimSpace(string(mdBytes))
+	if content == "" {
+		return "", false, nil
+	}
+
+	return content, true, nil
+}
+
+func (p *crawlDetailPodcastSourceProvider) resolveURL(link string) (string, bool, error) {
+	if p.urlTemplate == nil {
+		if _, ok := p.linkProvider.templateData(link); !ok {
+			return "", false, nil
+		}
+
+		return strings.TrimSpace(link), true, nil
+	}
+
+	url, ok, err := p.linkProvider.render(link, p.urlTemplate)
+	if err != nil {
+		return "", false, errors.Wrap(err, "render detail crawl url template")
+	}
+
+	return url, ok, nil
 }
 
 func pickRSSDetailItem(feed *gofeed.Feed, originalLink string) *gofeed.Item {

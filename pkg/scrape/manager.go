@@ -82,11 +82,30 @@ func (c *Config) From(app *config.App) {
 				RSSHubEndpoint:  app.Scrape.RSSHubEndpoint,
 				RSSHubRoutePath: app.Scrape.Sources[i].RSS.RSSHubRoutePath,
 				RSSHubAccessKey: app.Scrape.RSSHubAccessKey,
+				JinaToken:       app.Jina.Token,
 			}
 			if app.Scrape.Sources[i].RSS.Detail != nil {
 				c.Scrapers[i].RSS.Detail = &scraper.ScrapeSourceRSSDetail{
-					LinkRegex:               app.Scrape.Sources[i].RSS.Detail.LinkRegex,
-					RSSHubRoutePathTemplate: app.Scrape.Sources[i].RSS.Detail.RSSHubRoutePathTemplate,
+					LinkRegex: app.Scrape.Sources[i].RSS.Detail.LinkRegex,
+					RSS: func() *scraper.ScrapeSourceRSSDetailRSS {
+						if app.Scrape.Sources[i].RSS.Detail.RSS == nil {
+							return nil
+						}
+
+						return &scraper.ScrapeSourceRSSDetailRSS{
+							RSSHubRoutePathTemplate: app.Scrape.Sources[i].RSS.Detail.RSS.RSSHubRoutePathTemplate,
+						}
+					}(),
+					Crawl: func() *scraper.ScrapeSourceRSSDetailCrawl {
+						if app.Scrape.Sources[i].RSS.Detail.Crawl == nil {
+							return nil
+						}
+
+						return &scraper.ScrapeSourceRSSDetailCrawl{
+							Type:        app.Scrape.Sources[i].RSS.Detail.Crawl.Type,
+							URLTemplate: app.Scrape.Sources[i].RSS.Detail.Crawl.URLTemplate,
+						}
+					}(),
 				}
 			}
 		}

@@ -116,7 +116,7 @@ func new(instance string, config *Config, dependencies Dependencies) (Scraper, e
 	if err != nil {
 		return nil, errors.Wrap(err, "creating source")
 	}
-	podcastSourceProvider, err := newRSSDetailPodcastSourceProvider(config.RSS)
+	podcastSourceProvider, err := newDetailPodcastSourceProvider(config.RSS)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating podcast source provider")
 	}
