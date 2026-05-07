@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"runtime"
 	"sync"
 	"time"
 
@@ -35,6 +34,7 @@ import (
 	"github.com/glidea/zenfeed/pkg/telemetry"
 	"github.com/glidea/zenfeed/pkg/telemetry/log"
 	telemetrymodel "github.com/glidea/zenfeed/pkg/telemetry/model"
+	runtimeutil "github.com/glidea/zenfeed/pkg/util/runtime"
 	timeutil "github.com/glidea/zenfeed/pkg/util/time"
 )
 
@@ -238,7 +238,7 @@ type notifier struct {
 	mu              sync.RWMutex
 }
 
-var sendConcurrency = runtime.NumCPU() * 2
+var sendConcurrency = runtimeutil.GOMAXPROCS()
 
 func (n *notifier) Run() (err error) {
 	ctx := telemetry.StartWith(n.Context(), append(n.TelemetryLabels(), telemetrymodel.KeyOperation, "Run")...)

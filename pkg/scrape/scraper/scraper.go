@@ -34,6 +34,7 @@ import (
 	telemetrymodel "github.com/glidea/zenfeed/pkg/telemetry/model"
 	hashutil "github.com/glidea/zenfeed/pkg/util/hash"
 	"github.com/glidea/zenfeed/pkg/util/retry"
+	runtimeutil "github.com/glidea/zenfeed/pkg/util/runtime"
 	timeutil "github.com/glidea/zenfeed/pkg/util/time"
 )
 
@@ -322,26 +323,33 @@ func (s *scraper) addPodcastSource(ctx context.Context, feeds []*model.Feed) []*
 		feed.Labels.Put(model.LabelContentOrigin, model.ContentOriginOverview, false)
 	}
 
+	concurrency := runtimeutil.LimitConcurrency(0, len(feeds))
+	workCh := make(chan *model.Feed)
 	var wg sync.WaitGroup
-	for _, feed := range feeds {
-		wg.Add(1)
-		go func(feed *model.Feed) {
+	wg.Add(concurrency)
+	for range concurrency {
+		go func() {
 			defer wg.Done()
+			for feed := range workCh {
+				podcastSource, ok, err := s.podcastSourceProvider.Resolve(ctx, feed.Labels)
+				if err != nil {
+					log.Warn(ctx, errors.Wrapf(err, "populate podcast source for link %s", feed.Labels.Get(model.LabelLink)))
 
-			podcastSource, ok, err := s.podcastSourceProvider.Resolve(ctx, feed.Labels)
-			if err != nil {
-				log.Warn(ctx, errors.Wrapf(err, "populate podcast source for link %s", feed.Labels.Get(model.LabelLink)))
+					continue
+				}
+				if !ok || strings.TrimSpace(podcastSource) == "" {
+					continue
+				}
 
-				return
+				feed.Labels.Put(model.LabelPodcastSource, podcastSource, false)
+				feed.Labels.Put(model.LabelContentOrigin, model.ContentOriginFull, false)
 			}
-			if !ok || strings.TrimSpace(podcastSource) == "" {
-				return
-			}
-
-			feed.Labels.Put(model.LabelPodcastSource, podcastSource, false)
-			feed.Labels.Put(model.LabelContentOrigin, model.ContentOriginFull, false)
-		}(feed)
+		}()
 	}
+	for _, feed := range feeds {
+		workCh <- feed
+	}
+	close(workCh)
 	wg.Wait()
 
 	for _, feed := range feeds {

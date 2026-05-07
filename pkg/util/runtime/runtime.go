@@ -15,6 +15,8 @@
 
 package runtime
 
+import goruntime "runtime"
+
 // Must panics if err is not nil.
 // It is useful for handling errors in initialization code where recovery is not possible.
 func Must(err error) {
@@ -30,7 +32,7 @@ func Must1[T any](v T, err error) T {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	return v
 }
 
@@ -43,4 +45,35 @@ func Must2[T1 any, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
 	}
 
 	return v1, v2
+}
+
+// GOMAXPROCS returns the current process parallelism with a sane minimum.
+func GOMAXPROCS() int {
+	n := goruntime.GOMAXPROCS(0)
+	if n < 1 {
+		return 1
+	}
+
+	return n
+}
+
+// LimitConcurrency clamps a concurrency hint to a useful range.
+// If limit <= 0, it falls back to the current GOMAXPROCS value.
+// If total > 0, the returned value will not exceed total.
+func LimitConcurrency(limit, total int) int {
+	if total == 0 {
+		return 0
+	}
+
+	if limit <= 0 {
+		limit = GOMAXPROCS()
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if total > 0 && limit > total {
+		limit = total
+	}
+
+	return limit
 }

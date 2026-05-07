@@ -23,7 +23,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"sync"
@@ -795,7 +794,7 @@ func (b *block) maintainMetrics(ctx context.Context) {
 }
 
 func (b *block) runWritingWorker(ctx context.Context) {
-	var concurrency = runtime.NumCPU() * 4 // I/O bound.
+	var concurrency = runtimeutil.GOMAXPROCS()
 	var wg sync.WaitGroup
 	wg.Add(concurrency)
 	for i := range concurrency {
@@ -1284,30 +1283,38 @@ func (b *block) mergeFilterResults(x, y filterResult) filterResult {
 func (b *block) fillEmbedding(ctx context.Context, feeds []*model.Feed) ([]*chunk.Feed, error) {
 	embedded := make([]*chunk.Feed, 0, len(feeds))
 	llm := b.Dependencies().LLMFactory.Get(b.Config().embeddingLLM)
-	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errs []error
-	for i, feed := range feeds {
-		wg.Add(1)
-		go func(i int, feed *model.Feed) { // TODO: limit go routines.
+	concurrency := runtimeutil.LimitConcurrency(0, len(feeds))
+	workCh := make(chan *model.Feed)
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for range concurrency {
+		go func() {
 			defer wg.Done()
-			vectors, err := llm.EmbeddingLabels(ctx, feed.Labels)
-			if err != nil {
+			for feed := range workCh {
+				vectors, err := llm.EmbeddingLabels(ctx, feed.Labels)
+				if err != nil {
+					mu.Lock()
+					errs = append(errs, errors.Wrap(err, "fill embedding"))
+					mu.Unlock()
+
+					continue
+				}
+
 				mu.Lock()
-				errs = append(errs, errors.Wrap(err, "fill embedding"))
+				embedded = append(embedded, &chunk.Feed{
+					Feed:    feed,
+					Vectors: vectors,
+				})
 				mu.Unlock()
-
-				return
 			}
-
-			mu.Lock()
-			embedded = append(embedded, &chunk.Feed{
-				Feed:    feed,
-				Vectors: vectors,
-			})
-			mu.Unlock()
-		}(i, feed)
+		}()
 	}
+	for _, feed := range feeds {
+		workCh <- feed
+	}
+	close(workCh)
 	wg.Wait()
 
 	switch len(errs) {

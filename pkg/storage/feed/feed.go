@@ -41,6 +41,7 @@ import (
 	"github.com/glidea/zenfeed/pkg/telemetry"
 	"github.com/glidea/zenfeed/pkg/telemetry/log"
 	telemetrymodel "github.com/glidea/zenfeed/pkg/telemetry/model"
+	runtimeutil "github.com/glidea/zenfeed/pkg/util/runtime"
 	timeutil "github.com/glidea/zenfeed/pkg/util/time"
 )
 
@@ -581,37 +582,45 @@ func (s *storage) blockDependencies() block.Dependencies {
 func (s *storage) rewrite(ctx context.Context, feeds []*model.Feed) ([]*model.Feed, error) {
 	var (
 		rewritten = make([]*model.Feed, 0, len(feeds))
-		wg        sync.WaitGroup
 		mu        sync.Mutex
 		errs      []error
 		dropped   atomic.Int32
 	)
 
-	for _, item := range feeds { // TODO: Limit the concurrency & goroutine number.
-		wg.Add(1)
-		go func(item *model.Feed) {
+	concurrency := runtimeutil.LimitConcurrency(0, len(feeds))
+	workCh := make(chan *model.Feed)
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for range concurrency {
+		go func() {
 			defer wg.Done()
-			labels, err := s.Dependencies().Rewriter.Labels(ctx, item.Labels)
-			if err != nil {
+			for item := range workCh {
+				labels, err := s.Dependencies().Rewriter.Labels(ctx, item.Labels)
+				if err != nil {
+					mu.Lock()
+					errs = append(errs, errors.Wrap(err, "rewrite item"))
+					mu.Unlock()
+
+					continue
+				}
+				if len(labels) == 0 {
+					log.Debug(ctx, "drop feed", "id", item.ID)
+					dropped.Add(1)
+
+					continue // Drop empty labels.
+				}
+
+				item.Labels = labels
 				mu.Lock()
-				errs = append(errs, errors.Wrap(err, "rewrite item"))
+				rewritten = append(rewritten, item)
 				mu.Unlock()
-
-				return
 			}
-			if len(labels) == 0 {
-				log.Debug(ctx, "drop feed", "id", item.ID)
-				dropped.Add(1)
-
-				return // Drop empty labels.
-			}
-
-			item.Labels = labels
-			mu.Lock()
-			rewritten = append(rewritten, item)
-			mu.Unlock()
-		}(item)
+		}()
 	}
+	for _, item := range feeds {
+		workCh <- item
+	}
+	close(workCh)
 	wg.Wait()
 
 	switch len(errs) {
